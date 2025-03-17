@@ -84,7 +84,7 @@ public class TypeAnalysisContext : HasCustomAttributesAndName, ITypeInfoProvider
             if (Definition == null)
                 return false;
 
-            if (Definition.RawBaseType?.Type.IsIl2CppPrimitive() == true)
+            if (Definition.RawType?.Type.IsIl2CppPrimitive() == true)
                 return true;
             
             //Might still be TYPE_CLASS but yet int or something, so check it directly
