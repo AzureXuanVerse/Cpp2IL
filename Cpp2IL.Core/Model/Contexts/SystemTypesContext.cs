@@ -69,24 +69,6 @@ public class SystemTypesContext
         UnmanagedCallersOnlyAttributeType = systemAssembly.GetTypeByFullName("System.Runtime.InteropServices.UnmanagedCallersOnlyAttribute");
     }
 
-    public bool IsPrimitive(TypeAnalysisContext context)
-    {
-        return context == SystemBooleanType || 
-               context == SystemCharType || 
-               context == SystemSByteType || 
-               context == SystemByteType ||
-               context == SystemInt16Type || 
-               context == SystemUInt16Type || 
-               context == SystemInt32Type || 
-               context == SystemUInt32Type || 
-               context == SystemInt64Type ||
-               context == SystemUInt64Type || 
-               context == SystemSingleType || 
-               context == SystemDoubleType || 
-               context == SystemIntPtrType ||
-               context == SystemUIntPtrType;
-    }
-
     public bool TryGetIl2CppTypeEnum(TypeAnalysisContext context, out Il2CppTypeEnum value)
     {
         if (context == SystemBooleanType)

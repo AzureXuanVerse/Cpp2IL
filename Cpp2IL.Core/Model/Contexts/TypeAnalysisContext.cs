@@ -76,21 +76,6 @@ public class TypeAnalysisContext : HasCustomAttributesAndName, ITypeInfoProvider
     public TypeAnalysisContext? BaseType => OverrideBaseType ?? (Definition == null ? null : DeclaringAssembly.ResolveIl2CppType(Definition.RawBaseType));
 
     public TypeAnalysisContext[] InterfaceContexts => (Definition?.RawInterfaces.Select(DeclaringAssembly.ResolveIl2CppType).ToArray() ?? [])!;
-    
-    public bool IsPrimitive
-    {
-        get
-        {
-            if (Definition == null)
-                return false;
-
-            if (Definition.RawType?.Type.IsIl2CppPrimitive() == true)
-                return true;
-            
-            //Might still be TYPE_CLASS but yet int or something, so check it directly
-            return AppContext.SystemTypes.IsPrimitive(this);
-        }
-    }
 
     public virtual Il2CppTypeEnum Type
     {

@@ -60,8 +60,7 @@ public class WasmNameSectionOutputFormat : Cpp2IlOutputFormat
                 if (!v.method.IsStatic)
                     parameters.Insert(0, "this");
 
-                if (v.method.ReturnTypeContext is
-                    { IsValueType: true, IsPrimitive: true, Definition: null or { Size: > 8 } })
+                if (v.method.ReturnTypeContext is { IsValueType: true, Definition: null or { Size: > 8 } } rt && rt.IsWasmPrimitive()) //TODO Check - I think this IsWasmPrimitive check is inverted but I just ported what it was
                     parameters.Insert(0, "out");
 
                 parameters.Add("methodInfo"); // Only for some methods...?
