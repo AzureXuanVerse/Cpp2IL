@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using AssetRipper.Primitives;
 using Cpp2IL.Core.Api;
@@ -196,6 +197,22 @@ public class ApplicationAnalysisContext : ContextWithDataStorage
         return ResolveContextForType(propertyDefinition?.DeclaringType)?.Properties.FirstOrDefault(p => p.Definition == propertyDefinition);
     }
 
+    public GenericParameterTypeAnalysisContext? ResolveContextForGenericParameter(Il2CppGenericParameter? genericParameter)
+    {
+        if (genericParameter is null)
+            return null;
+
+        if (genericParameter.Owner.TypeOwner is { } typeOwner)
+        {
+            return ResolveContextForType(typeOwner)?.GenericParameters[genericParameter.genericParameterIndexInOwner];
+        }
+        else
+        {
+            Debug.Assert(genericParameter.Owner.MethodOwner is not null);
+            return ResolveContextForMethod(genericParameter.Owner.MethodOwner)?.GenericParameters[genericParameter.genericParameterIndexInOwner];
+        }
+    }
+
     public BaseKeyFunctionAddresses GetOrCreateKeyFunctionAddresses()
     {
         lock (InstructionSet)
@@ -212,6 +229,21 @@ public class ApplicationAnalysisContext : ContextWithDataStorage
         var types = Assemblies.Select(a => (InjectedTypeAnalysisContext)a.InjectType(ns, name, baseType)).ToArray();
 
         return new(types);
+    }
+
+    public InjectedAssemblyAnalysisContext InjectAssembly(
+        string name,
+        Version? version = null,
+        uint hashAlgorithm = 0,
+        uint flags = 0,
+        string? culture = null,
+        byte[]? publicKeyToken = null,
+        byte[]? publicKey = null)
+    {
+        var assembly = new InjectedAssemblyAnalysisContext(name, this, version, hashAlgorithm, flags, culture, publicKeyToken, publicKey);
+        Assemblies.Add(assembly);
+        AssembliesByName.Add(name, assembly);
+        return assembly;
     }
 
     public IEnumerable<TypeAnalysisContext> AllTypes => Assemblies.SelectMany(a => a.Types);

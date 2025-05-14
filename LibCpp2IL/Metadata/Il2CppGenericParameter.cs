@@ -17,14 +17,17 @@ public class Il2CppGenericParameter : ReadableClass
 
     public string? Name => LibCpp2IlMain.TheMetadata?.GetStringFromIndex(nameIndex);
 
-    public Il2CppType[]? ConstraintTypes => constraintsCount == 0
+    public Il2CppType[] ConstraintTypes => constraintsCount == 0
         ? []
-        : LibCpp2IlMain.TheMetadata?.constraintIndices
+        : LibCpp2IlMain.TheMetadata!.constraintIndices
             .Skip(constraintsStart)
             .Take(constraintsCount)
             .Select(LibCpp2IlMain.Binary!.GetType)
             .ToArray();
 
+    /// <summary>
+    /// The index of this generic parameter in <see cref="Il2CppMetadata.genericParameters"/>
+    /// </summary>
     public int Index { get; internal set; }
 
     public Il2CppGenericContainer Owner => LibCpp2IlMain.TheMetadata!.genericContainers[ownerIndex];

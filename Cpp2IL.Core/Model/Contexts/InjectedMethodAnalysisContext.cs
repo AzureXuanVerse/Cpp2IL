@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using LibCpp2IL.BinaryStructures;
 
@@ -9,7 +10,7 @@ public class InjectedMethodAnalysisContext : MethodAnalysisContext
 
     public override string DefaultName { get; }
 
-    public override bool IsStatic { get; }
+    public override bool IsStatic => Attributes.HasFlag(MethodAttributes.Static);
 
     public override bool IsVoid => InjectedReturnType?.Type is Il2CppTypeEnum.IL2CPP_TYPE_VOID;
 
@@ -19,11 +20,13 @@ public class InjectedMethodAnalysisContext : MethodAnalysisContext
 
     protected override int CustomAttributeIndex => -1;
 
-    public InjectedMethodAnalysisContext(TypeAnalysisContext parent, string name, bool isStatic, TypeAnalysisContext returnType, MethodAttributes attributes, TypeAnalysisContext[] injectedParameterTypes, string[]? injectedParameterNames = null) : base(null, parent)
+    public override IEnumerable<MethodAnalysisContext> Overrides => OverridesList;
+    public List<MethodAnalysisContext> OverridesList { get; } = [];
+
+    public InjectedMethodAnalysisContext(TypeAnalysisContext parent, string name, TypeAnalysisContext returnType, MethodAttributes attributes, TypeAnalysisContext[] injectedParameterTypes, string[]? injectedParameterNames = null) : base(null, parent)
     {
         DefaultName = name;
         InjectedReturnType = returnType;
-        IsStatic = isStatic;
         Attributes = attributes;
 
         for (var i = 0; i < injectedParameterTypes.Length; i++)

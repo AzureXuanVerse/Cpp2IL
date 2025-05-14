@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using Cpp2IL.Core.Utils;
 using LibCpp2IL.BinaryStructures;
 using LibCpp2IL.Metadata;
 
@@ -6,6 +10,8 @@ namespace Cpp2IL.Core.Model.Contexts;
 
 public class GenericParameterTypeAnalysisContext : ReferencedTypeAnalysisContext
 {
+    private readonly Il2CppGenericParameter? definition;
+
     public sealed override string DefaultName { get; }
 
     public sealed override string DefaultNs => "";
@@ -14,17 +20,31 @@ public class GenericParameterTypeAnalysisContext : ReferencedTypeAnalysisContext
 
     public override Il2CppTypeEnum Type { get; }
 
-    public GenericParameterTypeAnalysisContext(Il2CppType rawType, AssemblyAnalysisContext referencedFrom)
-        : this(rawType.GetGenericParameterDef(), referencedFrom)
+    public GenericParameterAttributes Attributes { get; }
+
+    private List<TypeAnalysisContext>? _constraintTypes;
+    public List<TypeAnalysisContext> ConstraintTypes
     {
+        get
+        {
+            _constraintTypes ??= definition?.ConstraintTypes.Select(t => DeclaringAssembly.ResolveIl2CppType(t)).ToList() ?? [];
+            return _constraintTypes;
+        }
     }
 
-    public GenericParameterTypeAnalysisContext(Il2CppGenericParameter genericParameter, AssemblyAnalysisContext referencedFrom)
-        : this(genericParameter.Name ?? "T", genericParameter.genericParameterIndexInOwner, genericParameter.Type, referencedFrom)
+    public HasGenericParameters Owner { get; }
+
+    /// <summary>
+    /// This should only be used by the initializers for <see cref="TypeAnalysisContext.GenericParameters"/> and <see cref="MethodAnalysisContext.GenericParameters"/>.
+    /// It ensures that generic parameters are only held by their owners.
+    /// </summary>
+    internal GenericParameterTypeAnalysisContext(Il2CppGenericParameter genericParameter, HasGenericParameters owner)
+        : this(genericParameter.Name ?? "T", genericParameter.genericParameterIndexInOwner, genericParameter.Type, genericParameter.Attributes, owner)
     {
+        definition = genericParameter;
     }
 
-    public GenericParameterTypeAnalysisContext(string name, int index, Il2CppTypeEnum type, AssemblyAnalysisContext referencedFrom) : base(referencedFrom)
+    public GenericParameterTypeAnalysisContext(string name, int index, Il2CppTypeEnum type, GenericParameterAttributes attributes, HasGenericParameters owner) : base(owner.CustomAttributeAssembly)
     {
         if (type is not Il2CppTypeEnum.IL2CPP_TYPE_VAR and not Il2CppTypeEnum.IL2CPP_TYPE_MVAR)
             throw new ArgumentException($"Generic parameter type is not a generic parameter, but {type}", nameof(type));
@@ -32,5 +52,7 @@ public class GenericParameterTypeAnalysisContext : ReferencedTypeAnalysisContext
         DefaultName = name;
         Index = index;
         Type = type;
+        Attributes = attributes;
+        Owner = owner;
     }
 }
