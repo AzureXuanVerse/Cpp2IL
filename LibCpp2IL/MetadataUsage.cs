@@ -58,8 +58,8 @@ public class MetadataUsage(MetadataUsageType type, ulong offset, uint value)
                     try
                     {
                         _cachedType = LibCpp2IlMain.Binary!.GetType((int)value);
-                        _cachedTypeReflectionData = LibCpp2ILUtils.GetTypeReflectionData(_cachedType)!;
-                        _cachedName = LibCpp2ILUtils.GetTypeReflectionData(_cachedType)?.ToString();
+                        _cachedTypeReflectionData = LibCpp2ILUtils.GetTypeReflectionData(_cachedType);
+                        _cachedName = _cachedTypeReflectionData?.ToString();
                     }
                     catch (Exception e)
                     {
