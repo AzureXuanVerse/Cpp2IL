@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Cpp2IL.Core.Utils;
 using LibCpp2IL;
@@ -18,7 +19,7 @@ public class ConcreteGenericMethodAnalysisContext : MethodAnalysisContext
     /// <remarks>
     /// If not empty, <see cref="MethodAnalysisContext.DeclaringType"/> is a <see cref="GenericInstanceTypeAnalysisContext"/>.
     /// </remarks>
-    public TypeAnalysisContext[] TypeGenericParameters { get; }
+    public IReadOnlyList<TypeAnalysisContext> TypeGenericParameters { get; }
 
     /// <summary>
     /// The generic parameters for the <see cref="BaseMethodContext"/>.
@@ -26,24 +27,28 @@ public class ConcreteGenericMethodAnalysisContext : MethodAnalysisContext
     /// <remarks>
     /// These may be empty if <see cref="BaseMethodContext"/> has no generic parameters or if <see cref="IsPartialInstantiation"/>.
     /// </remarks>
-    public TypeAnalysisContext[] MethodGenericParameters { get; }
+    public IReadOnlyList<TypeAnalysisContext> MethodGenericParameters { get; }
 
     /// <summary>
     /// If true, this is a generic method on a <see cref="GenericInstanceTypeAnalysisContext"/>, but it does not specify any <see cref="MethodGenericParameters"/>.
     /// </summary>
-    public bool IsPartialInstantiation => MethodGenericParameters.Length == 0 && BaseMethodContext.GenericParameterCount > 0;
+    public bool IsPartialInstantiation => MethodGenericParameters.Count == 0 && BaseMethodContext.GenericParameters.Count > 0;
 
     public sealed override ulong UnderlyingPointer => MethodRef?.GenericVariantPtr ?? default;
 
-    public override bool IsStatic => BaseMethodContext.IsStatic;
-
-    public override bool IsVoid => BaseMethodContext.IsVoid;
-
     public override string DefaultName => BaseMethodContext.DefaultName;
+
+    public override TypeAnalysisContext DefaultReturnType { get; }
 
     public override string? OverrideName { get => BaseMethodContext.OverrideName; set => BaseMethodContext.OverrideName = value; }
 
-    public override MethodAttributes Attributes => BaseMethodContext.Attributes;
+    public override MethodAttributes DefaultAttributes => BaseMethodContext.DefaultAttributes;
+
+    public override MethodAttributes? OverrideAttributes { get => BaseMethodContext.OverrideAttributes; set => BaseMethodContext.OverrideAttributes = value; }
+
+    public override MethodImplAttributes DefaultImplAttributes => BaseMethodContext.DefaultImplAttributes;
+
+    public override MethodImplAttributes? OverrideImplAttributes { get => BaseMethodContext.OverrideImplAttributes; set => BaseMethodContext.OverrideImplAttributes = value; }
 
     public override AssemblyAnalysisContext CustomAttributeAssembly => BaseMethodContext.CustomAttributeAssembly;
 
@@ -72,7 +77,12 @@ public class ConcreteGenericMethodAnalysisContext : MethodAnalysisContext
     /// The type parameters for the base method, if any.
     /// These may be omitted (<see cref="IsPartialInstantiation"/> == <see langword="true"/>).
     /// </param>
-    public ConcreteGenericMethodAnalysisContext(MethodAnalysisContext baseMethod, TypeAnalysisContext[] typeGenericParameters, TypeAnalysisContext[] methodGenericParameters)
+    public ConcreteGenericMethodAnalysisContext(MethodAnalysisContext baseMethod, IEnumerable<TypeAnalysisContext> typeGenericParameters, IEnumerable<TypeAnalysisContext> methodGenericParameters)
+        : this(baseMethod, [.. typeGenericParameters], [.. methodGenericParameters])
+    {
+    }
+
+    private ConcreteGenericMethodAnalysisContext(MethodAnalysisContext baseMethod, TypeAnalysisContext[] typeGenericParameters, TypeAnalysisContext[] methodGenericParameters)
         : this(
               null,
               baseMethod,
@@ -81,10 +91,10 @@ public class ConcreteGenericMethodAnalysisContext : MethodAnalysisContext
               methodGenericParameters,
               baseMethod.CustomAttributeAssembly)
     {
-        if (baseMethod.DeclaringType!.GenericParameterCount != typeGenericParameters.Length)
+        if (baseMethod.DeclaringType!.GenericParameters.Count != typeGenericParameters.Length)
             throw new ArgumentException("The number of type generic parameters must match the number of generic parameters on the declaring type.");
 
-        if (methodGenericParameters.Length > 0 && baseMethod.GenericParameterCount != methodGenericParameters.Length)
+        if (methodGenericParameters.Length > 0 && baseMethod.GenericParameters.Count != methodGenericParameters.Length)
             throw new ArgumentException("The number of method generic parameters must match the number of generic parameters on the base method.");
     }
 
@@ -99,21 +109,21 @@ public class ConcreteGenericMethodAnalysisContext : MethodAnalysisContext
         MethodGenericParameters = methodGenericParameters;
 
         // For the purpose of generic instantiation, we need an array of method generic parameters, even if none are provided.
-        if (methodGenericParameters.Length == 0 && baseMethodContext.GenericParameterCount > 0)
+        if (methodGenericParameters.Length == 0 && baseMethodContext.GenericParameters.Count > 0)
             methodGenericParameters = baseMethodContext.GenericParameters.ToArray();
 
         for (var i = 0; i < BaseMethodContext.Parameters.Count; i++)
         {
             var parameter = BaseMethodContext.Parameters[i];
             var instantiatedType = GenericInstantiation.Instantiate(
-                parameter.ParameterTypeContext,
+                parameter.ParameterType,
                 typeGenericParameters,
                 methodGenericParameters);
 
             Parameters.Add(new ConcreteGenericParameterAnalysisContext(parameter, instantiatedType, this));
         }
 
-        InjectedReturnType = GenericInstantiation.Instantiate(BaseMethodContext.ReturnTypeContext, typeGenericParameters, methodGenericParameters);
+        DefaultReturnType = GenericInstantiation.Instantiate(BaseMethodContext.ReturnType, typeGenericParameters, methodGenericParameters);
 
         if (UnderlyingPointer != 0)
             rawMethodBody = AppContext.InstructionSet.GetRawBytesForMethod(this, false);

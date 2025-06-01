@@ -161,10 +161,10 @@ public static class AsmResolverAssemblyPopulator
     }
 
     private static CustomAttributeNamedArgument FromAnalyzedAttributeField(AssemblyDefinition parentAssembly, CustomAttributeField field)
-        => new(CustomAttributeArgumentMemberType.Field, field.Field.FieldName, GetTypeSigFromAttributeArg(parentAssembly, field.Value), FromAnalyzedAttributeArgument(parentAssembly, field.Value, field.Field.FieldTypeContext == field.Field.AppContext.SystemTypes.SystemObjectType));
+        => new(CustomAttributeArgumentMemberType.Field, field.Field.Name, GetTypeSigFromAttributeArg(parentAssembly, field.Value), FromAnalyzedAttributeArgument(parentAssembly, field.Value, field.Field.FieldType == field.Field.AppContext.SystemTypes.SystemObjectType));
 
     private static CustomAttributeNamedArgument FromAnalyzedAttributeProperty(AssemblyDefinition parentAssembly, CustomAttributeProperty property)
-        => new(CustomAttributeArgumentMemberType.Property, property.Property.Name, GetTypeSigFromAttributeArg(parentAssembly, property.Value), FromAnalyzedAttributeArgument(parentAssembly, property.Value, property.Property.PropertyTypeContext == property.Property.AppContext.SystemTypes.SystemObjectType));
+        => new(CustomAttributeArgumentMemberType.Property, property.Property.Name, GetTypeSigFromAttributeArg(parentAssembly, property.Value), FromAnalyzedAttributeArgument(parentAssembly, property.Value, property.Property.PropertyType == property.Property.AppContext.SystemTypes.SystemObjectType));
 
     private static CustomAttribute? ConvertCustomAttribute(AnalyzedCustomAttribute analyzedCustomAttribute, AssemblyDefinition assemblyDefinition)
     {
@@ -184,13 +184,13 @@ public static class AsmResolverAssemblyPopulator
                 if (numNamedArgs == 0)
                 {
                     //Only fixed arguments.
-                    signature = new(analyzedCustomAttribute.ConstructorParameters.Select(p => FromAnalyzedAttributeArgument(assemblyDefinition, p, analyzedCustomAttribute.Constructor.Parameters[p.Index].ParameterTypeContext == analyzedCustomAttribute.Constructor.AppContext.SystemTypes.SystemObjectType)));
+                    signature = new(analyzedCustomAttribute.ConstructorParameters.Select(p => FromAnalyzedAttributeArgument(assemblyDefinition, p, analyzedCustomAttribute.Constructor.Parameters[p.Index].ParameterType == analyzedCustomAttribute.Constructor.AppContext.SystemTypes.SystemObjectType)));
                 }
                 else
                 {
                     //Has named arguments.
                     signature = new(
-                        analyzedCustomAttribute.ConstructorParameters.Select(p => FromAnalyzedAttributeArgument(assemblyDefinition, p, analyzedCustomAttribute.Constructor.Parameters[p.Index].ParameterTypeContext == analyzedCustomAttribute.Constructor.AppContext.SystemTypes.SystemObjectType)),
+                        analyzedCustomAttribute.ConstructorParameters.Select(p => FromAnalyzedAttributeArgument(assemblyDefinition, p, analyzedCustomAttribute.Constructor.Parameters[p.Index].ParameterType == analyzedCustomAttribute.Constructor.AppContext.SystemTypes.SystemObjectType)),
                         analyzedCustomAttribute.Fields
                             .Select(f => FromAnalyzedAttributeField(assemblyDefinition, f))
                             .Concat(analyzedCustomAttribute.Properties.Select(p => FromAnalyzedAttributeProperty(assemblyDefinition, p)))
@@ -264,7 +264,7 @@ public static class AsmResolverAssemblyPopulator
                     var parameterDefinitions = methodDef.ParameterDefinitions;
                     foreach (var parameterAnalysisContext in method.Parameters)
                     {
-                        CopyCustomAttributes(parameterAnalysisContext, parameterDefinitions[parameterAnalysisContext.ParamIndex].CustomAttributes);
+                        CopyCustomAttributes(parameterAnalysisContext, parameterDefinitions[parameterAnalysisContext.ParameterIndex].CustomAttributes);
                     }
                 }
 
@@ -307,7 +307,7 @@ public static class AsmResolverAssemblyPopulator
 #if !DEBUG
             catch (Exception e)
             {
-                throw new Exception($"Failed to process type {managedType.FullName} (module {managedType.Module?.Name}, declaring type {managedType.DeclaringType?.FullName}) in {asmContext.Definition.AssemblyName.Name}", e);
+                throw new Exception($"Failed to process type {managedType.FullName} (module {managedType.Module?.Name}, declaring type {managedType.DeclaringType?.FullName}) in {asmContext.Name}", e);
             }
 #endif
         }
@@ -334,7 +334,7 @@ public static class AsmResolverAssemblyPopulator
 
             var fieldTypeSig = fieldContext.ToTypeSignature(importer.TargetModule);
 
-            var managedField = new FieldDefinition(fieldContext.FieldName, (FieldAttributes)fieldContext.Attributes, fieldTypeSig);
+            var managedField = new FieldDefinition(fieldContext.Name, (FieldAttributes)fieldContext.Attributes, fieldTypeSig);
 
             if (fieldInfo != null)
             {
@@ -361,18 +361,18 @@ public static class AsmResolverAssemblyPopulator
     {
         foreach (var methodCtx in typeContext.Methods)
         {
-            var returnType = methodCtx.ReturnTypeContext.ToTypeSignature(importer.TargetModule);
+            var returnType = methodCtx.ReturnType.ToTypeSignature(importer.TargetModule);
 
             var paramData = methodCtx.Parameters;
             var parameterTypes = new TypeSignature[paramData.Count];
             var parameterDefinitions = new ParameterDefinition[paramData.Count];
             foreach (var parameterAnalysisContext in methodCtx.Parameters)
             {
-                var i = parameterAnalysisContext.ParamIndex;
-                parameterTypes[i] = parameterAnalysisContext.ParameterTypeContext.ToTypeSignature(importer.TargetModule);
+                var i = parameterAnalysisContext.ParameterIndex;
+                parameterTypes[i] = parameterAnalysisContext.ParameterType.ToTypeSignature(importer.TargetModule);
 
                 var sequence = (ushort)(i + 1); //Add one because sequence 0 is the return type
-                parameterDefinitions[i] = new(sequence, parameterAnalysisContext.Name, (ParameterAttributes)parameterAnalysisContext.ParameterAttributes);
+                parameterDefinitions[i] = new(sequence, parameterAnalysisContext.Name, (ParameterAttributes)parameterAnalysisContext.Attributes);
 
                 if (parameterAnalysisContext.DefaultValue is not { } defaultValueData)
                     continue;
@@ -388,14 +388,15 @@ public static class AsmResolverAssemblyPopulator
 
 
             var signature = methodCtx.IsStatic
-                ? MethodSignature.CreateStatic(returnType, methodCtx.GenericParameterCount, parameterTypes)
-                : MethodSignature.CreateInstance(returnType, methodCtx.GenericParameterCount, parameterTypes);
+                ? MethodSignature.CreateStatic(returnType, methodCtx.GenericParameters.Count, parameterTypes)
+                : MethodSignature.CreateInstance(returnType, methodCtx.GenericParameters.Count, parameterTypes);
 
             var managedMethod = new MethodDefinition(methodCtx.Name, (MethodAttributes)methodCtx.Attributes, signature);
 
+            managedMethod.ImplAttributes = (MethodImplAttributes)methodCtx.ImplAttributes;
+
             if (methodCtx.Definition != null)
             {
-                managedMethod.ImplAttributes = (MethodImplAttributes)methodCtx.Definition.MethodImplAttributes;
                 if (methodCtx.Definition.IsUnmanagedCallersOnly && typeContext.AppContext.SystemTypes.UnmanagedCallersOnlyAttributeType != null)
                 {
                     var unmanagedCallersOnlyType = typeContext.AppContext.SystemTypes.UnmanagedCallersOnlyAttributeType.GetExtraData<TypeDefinition>("AsmResolverType");
@@ -441,7 +442,7 @@ public static class AsmResolverAssemblyPopulator
                 ? PropertySignature.CreateStatic(propertyTypeSig)
                 : PropertySignature.CreateInstance(propertyTypeSig);
 
-            var managedProperty = new PropertyDefinition(propertyCtx.Name, (PropertyAttributes)propertyCtx.PropertyAttributes, propertySignature);
+            var managedProperty = new PropertyDefinition(propertyCtx.Name, (PropertyAttributes)propertyCtx.Attributes, propertySignature);
 
             var managedGetter = propertyCtx.Getter?.GetExtraData<MethodDefinition>("AsmResolverMethod");
             var managedSetter = propertyCtx.Setter?.GetExtraData<MethodDefinition>("AsmResolverMethod");
@@ -478,7 +479,7 @@ public static class AsmResolverAssemblyPopulator
         {
             var eventType = eventCtx.ToTypeSignature(importer.TargetModule).ToTypeDefOrRef();
 
-            var managedEvent = new EventDefinition(eventCtx.Name, (EventAttributes)eventCtx.EventAttributes, eventType);
+            var managedEvent = new EventDefinition(eventCtx.Name, (EventAttributes)eventCtx.Attributes, eventType);
 
             var managedAdder = eventCtx.Adder?.GetExtraData<MethodDefinition>("AsmResolverMethod");
             var managedRemover = eventCtx.Remover?.GetExtraData<MethodDefinition>("AsmResolverMethod");
@@ -514,7 +515,7 @@ public static class AsmResolverAssemblyPopulator
 #if !DEBUG
             catch (Exception e)
             {
-                throw new Exception($"Failed to process type {managedType.FullName} (module {managedType.Module?.Name}, declaring type {managedType.DeclaringType?.FullName}) in {asmContext.Definition.AssemblyName.Name}", e);
+                throw new Exception($"Failed to process type {managedType.FullName} (module {managedType.Module?.Name}, declaring type {managedType.DeclaringType?.FullName}) in {asmContext.Name}", e);
             }
 #endif
         }

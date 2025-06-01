@@ -6,8 +6,9 @@ namespace Cpp2IL.Core.Model.Contexts;
 public class ConcreteGenericFieldAnalysisContext : FieldAnalysisContext
 {
     public FieldAnalysisContext BaseFieldContext { get; }
-    public override FieldAttributes Attributes => BaseFieldContext.Attributes;
-    public override TypeAnalysisContext FieldTypeContext { get; }
+    public override FieldAttributes DefaultAttributes => BaseFieldContext.DefaultAttributes;
+    public override FieldAttributes? OverrideAttributes { get => BaseFieldContext.OverrideAttributes; set => BaseFieldContext.OverrideAttributes = value; }
+    public override TypeAnalysisContext DefaultFieldType { get; }
     public override string DefaultName => BaseFieldContext.DefaultName;
     public override string? OverrideName { get => BaseFieldContext.OverrideName; set => BaseFieldContext.OverrideName = value; }
 
@@ -15,6 +16,6 @@ public class ConcreteGenericFieldAnalysisContext : FieldAnalysisContext
         : base(null, genericInstanceType)
     {
         BaseFieldContext = baseField;
-        FieldTypeContext = GenericInstantiation.Instantiate(baseField.FieldTypeContext, genericInstanceType.GenericArguments, []);
+        DefaultFieldType = GenericInstantiation.Instantiate(baseField.FieldType, genericInstanceType.GenericArguments, []);
     }
 }

@@ -5,8 +5,8 @@ namespace Cpp2IL.Core.Model.Contexts;
 public class InjectedPropertyAnalysisContext : PropertyAnalysisContext
 {
     public override string DefaultName { get; }
-    public override PropertyAttributes PropertyAttributes { get; }
-    public override TypeAnalysisContext PropertyTypeContext { get; }
+    public override PropertyAttributes DefaultAttributes { get; }
+    public override TypeAnalysisContext DefaultPropertyType { get; }
     public override bool IsStatic
     {
         get
@@ -29,7 +29,7 @@ public class InjectedPropertyAnalysisContext : PropertyAnalysisContext
         TypeAnalysisContext parent) : base(getter, setter, parent)
     {
         DefaultName = name;
-        PropertyTypeContext = propertyType;
-        PropertyAttributes = propertyAttributes;
+        DefaultPropertyType = propertyType;
+        DefaultAttributes = propertyAttributes;
     }
 }

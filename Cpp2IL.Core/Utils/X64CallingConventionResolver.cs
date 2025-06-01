@@ -22,7 +22,7 @@ public static class X64CallingConventionResolver
 
     private static bool IsXMM(ParameterAnalysisContext par)
     {
-        var parameterType = par.ParameterTypeContext;
+        var parameterType = par.ParameterType;
         return parameterType == parameterType.AppContext.SystemTypes.SystemSingleType
             || parameterType == parameterType.AppContext.SystemTypes.SystemDoubleType;
     }
@@ -182,7 +182,7 @@ public static class X64CallingConventionResolver
                 }
             }
 
-            for (; i < ctx.ParameterCount; i++)
+            for (; i < ctx.Parameters.Count; i++)
             {
                 AddParameter(ctx.Parameters[i]);
             }

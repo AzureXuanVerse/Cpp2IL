@@ -1,8 +1,6 @@
 using System.Reflection;
 using System.Text;
 using Cpp2IL.Core.Utils;
-using LibCpp2IL;
-using LibCpp2IL.BinaryStructures;
 using LibCpp2IL.Metadata;
 using StableNameDotNet.Providers;
 
@@ -18,17 +16,12 @@ public class ParameterAnalysisContext : HasCustomAttributesAndName, IParameterIn
     /// <summary>
     /// The index of this parameter in the declaring method's parameter list.
     /// </summary>
-    public int ParamIndex { get; }
+    public int ParameterIndex { get; }
 
     /// <summary>
     /// The method which this parameter belongs to. Cannot be null.
     /// </summary>
     public MethodAnalysisContext DeclaringMethod { get; }
-
-    /// <summary>
-    /// The il2cpp type of the parameter. Cannot be null.
-    /// </summary>
-    public virtual Il2CppType ParameterType => Definition?.RawType ?? throw new("Subclasses of ParameterAnalysisContext must provide a parameter type");
 
     protected override int CustomAttributeIndex => Definition?.customAttributeIndex ?? throw new("Subclasses of ParameterAnalysisContext must provide a customAttributeIndex");
     public override AssemblyAnalysisContext CustomAttributeAssembly => DeclaringMethod.DeclaringType!.DeclaringAssembly;
@@ -37,43 +30,51 @@ public class ParameterAnalysisContext : HasCustomAttributesAndName, IParameterIn
     /// <summary>
     /// The human-readable display value of the parameter type.
     /// </summary>
-    public string ReadableTypeName => ParameterTypeContext.FullName;
+    public string ReadableTypeName => ParameterType.FullName;
 
     /// <summary>
     /// The human-readable display value of the parameter, as it would appear in a c# method declaration.
     /// </summary>
     public string HumanReadableSignature => $"{ReadableTypeName} {Name}";
 
+    public virtual ParameterAttributes DefaultAttributes => (ParameterAttributes?)Definition?.RawType?.Attrs ?? throw new("Subclasses of ParameterAnalysisContext must provide parameter attributes");
+
+    public virtual ParameterAttributes? OverrideAttributes { get; set; }
+
     /// <summary>
     /// The ParameterAttributes of this parameter.
     /// </summary>
-    public virtual ParameterAttributes ParameterAttributes => (ParameterAttributes)ParameterType.Attrs;
+    public ParameterAttributes Attributes => OverrideAttributes ?? DefaultAttributes;
 
     /// <summary>
     /// True if this parameter is passed by reference.
     /// </summary>
-    public bool IsRef => ParameterTypeContext is ByRefTypeAnalysisContext || ParameterAttributes.HasFlag(ParameterAttributes.Out);
+    public bool IsRef => ParameterType is ByRefTypeAnalysisContext || Attributes.HasFlag(ParameterAttributes.Out);
 
     /// <summary>
     /// The default value data for this parameter. Null if, and only if, the parameter has no default value. If it has a default value of literally null, this will be non-null and have a data index of -1.
     /// </summary>
     public Il2CppParameterDefaultValue? DefaultValue { get; }
 
-    public virtual TypeAnalysisContext ParameterTypeContext => DeclaringMethod.DeclaringType!.DeclaringAssembly.ResolveIl2CppType(ParameterType);
+    public virtual TypeAnalysisContext DefaultParameterType => DeclaringMethod.DeclaringType!.DeclaringAssembly.ResolveIl2CppType(Definition?.RawType) ?? throw new("Subclasses of ParameterAnalysisContext must provide a parameter type");
 
-    public ParameterAnalysisContext(Il2CppParameterDefinition? definition, int paramIndex, MethodAnalysisContext declaringMethod) : base(definition?.token ?? 0, declaringMethod.AppContext)
+    public TypeAnalysisContext? OverrideParameterType { get; set; }
+
+    public virtual TypeAnalysisContext ParameterType => OverrideParameterType ?? DefaultParameterType;
+
+    public ParameterAnalysisContext(Il2CppParameterDefinition? definition, int parameterIndex, MethodAnalysisContext declaringMethod) : base(definition?.token ?? 0, declaringMethod.AppContext)
     {
         Definition = definition;
-        ParamIndex = paramIndex;
+        ParameterIndex = parameterIndex;
         DeclaringMethod = declaringMethod;
 
         if (Definition != null)
         {
             InitCustomAttributeData();
 
-            if (ParameterAttributes.HasFlag(ParameterAttributes.HasDefault))
+            if (Attributes.HasFlag(ParameterAttributes.HasDefault))
             {
-                DefaultValue = AppContext.Metadata.GetParameterDefaultValueFromIndex(declaringMethod.Definition!.parameterStart + paramIndex)!;
+                DefaultValue = AppContext.Metadata.GetParameterDefaultValueFromIndex(declaringMethod.Definition!.parameterStart + parameterIndex)!;
             }
         }
     }
@@ -82,25 +83,25 @@ public class ParameterAnalysisContext : HasCustomAttributesAndName, IParameterIn
     {
         if (!AppContext.HasFinishedInitializing)
             //Cannot safely access ParameterTypeContext.Name if we haven't finished initializing as it may require doing system type lookups etc.
-            return $"Parameter {Name} (ordinal {ParamIndex}) of {DeclaringMethod}";
+            return $"Parameter {Name} (ordinal {ParameterIndex}) of {DeclaringMethod}";
 
         var result = new StringBuilder();
 
-        if (ParameterAttributes.HasFlag(ParameterAttributes.Out))
+        if (Attributes.HasFlag(ParameterAttributes.Out))
             result.Append("out ");
-        else if (ParameterAttributes.HasFlag(ParameterAttributes.In))
+        else if (Attributes.HasFlag(ParameterAttributes.In))
             result.Append("in ");
-        else if (ParameterType.Byref == 1)
+        else if (ParameterType is ByRefTypeAnalysisContext)
             result.Append("ref ");
 
-        result.Append(CsFileUtils.GetTypeName(ParameterTypeContext.Name)).Append(' ');
+        result.Append(CsFileUtils.GetTypeName(ParameterType.Name)).Append(' ');
 
         if (string.IsNullOrEmpty(ParameterName))
-            result.Append("unnamed_param_").Append(ParamIndex);
+            result.Append("unnamed_param_").Append(ParameterIndex);
         else
             result.Append(ParameterName);
 
-        if (ParameterAttributes.HasFlag(ParameterAttributes.HasDefault))
+        if (Attributes.HasFlag(ParameterAttributes.HasDefault))
         {
             var defaultValue = DefaultValue!.ContainedDefaultValue;
             if (defaultValue is string stringDefaultValue)

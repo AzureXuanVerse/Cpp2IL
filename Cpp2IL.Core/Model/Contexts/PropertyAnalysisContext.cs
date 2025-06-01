@@ -22,10 +22,18 @@ public class PropertyAnalysisContext : HasCustomAttributesAndName, IPropertyInfo
 
     public virtual bool IsStatic => Definition?.IsStatic ?? throw new($"Subclasses must override {nameof(IsStatic)}.");
 
-    public virtual PropertyAttributes PropertyAttributes => (PropertyAttributes?)Definition?.attrs ?? throw new($"Subclasses must override {nameof(PropertyAttributes)}.");
+    public virtual PropertyAttributes DefaultAttributes => (PropertyAttributes?)Definition?.attrs ?? throw new($"Subclasses must override {nameof(DefaultAttributes)}.");
 
-    public virtual TypeAnalysisContext PropertyTypeContext => DeclaringType.DeclaringAssembly.ResolveIl2CppType(Definition?.RawPropertyType)
-        ?? throw new($"Subclasses must override {nameof(PropertyTypeContext)}.");
+    public PropertyAttributes? OverrideAttributes { get; set; }
+
+    public PropertyAttributes Attributes => OverrideAttributes ?? DefaultAttributes;
+
+    public virtual TypeAnalysisContext DefaultPropertyType => DeclaringType.DeclaringAssembly.ResolveIl2CppType(Definition?.RawPropertyType)
+        ?? throw new($"Subclasses must override {nameof(DefaultPropertyType)}.");
+
+    public TypeAnalysisContext? OverridePropertyType { get; set; }
+
+    public TypeAnalysisContext PropertyType => OverridePropertyType ?? DefaultPropertyType;
 
     public PropertyAnalysisContext(Il2CppPropertyDefinition definition, TypeAnalysisContext parent) : base(definition.token, parent.AppContext)
     {
@@ -53,7 +61,7 @@ public class PropertyAnalysisContext : HasCustomAttributesAndName, IPropertyInfo
     #region StableNameDotNet implementation
 
     public ITypeInfoProvider PropertyTypeInfoProvider
-        => Definition.RawPropertyType!.ThisOrElementIsGenericParam()
+        => Definition!.RawPropertyType!.ThisOrElementIsGenericParam()
             ? new GenericParameterTypeInfoProviderWrapper(Definition.RawPropertyType!.GetGenericParamName())
             : TypeAnalysisContext.GetSndnProviderForType(AppContext, Definition.RawPropertyType!);
 

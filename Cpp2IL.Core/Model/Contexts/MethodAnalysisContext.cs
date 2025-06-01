@@ -1,17 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Reflection;
 using Cpp2IL.Core.Graphs;
-using Cpp2IL.Core.ISIL;
 using Cpp2IL.Core.Graphs.Processors;
+using Cpp2IL.Core.ISIL;
 using Cpp2IL.Core.Logging;
 using Cpp2IL.Core.Utils;
 using LibCpp2IL;
 using LibCpp2IL.Metadata;
 using StableNameDotNet.Providers;
-using System.Linq;
-using LibCpp2IL.Reflection;
 
 namespace Cpp2IL.Core.Model.Contexts;
 
@@ -59,9 +58,9 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
     /// <summary>
     /// Does this method return void?
     /// </summary>
-    public virtual bool IsVoid => (Definition?.ReturnType?.ToString() ?? throw new("Subclasses of MethodAnalysisContext should override IsVoid")) == "System.Void";
+    public bool IsVoid => ReturnType == AppContext.SystemTypes.SystemVoidType;
 
-    public virtual bool IsStatic => Definition?.IsStatic ?? throw new("Subclasses of MethodAnalysisContext should override IsStatic");
+    public bool IsStatic => (Attributes & MethodAttributes.Static) != 0;
 
     protected override int CustomAttributeIndex => Definition?.customAttributeIndex ?? throw new("Subclasses of MethodAnalysisContext should override CustomAttributeIndex if they have custom attributes");
 
@@ -71,13 +70,31 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
 
     public string FullName => DeclaringType == null ? Name : $"{DeclaringType.FullName}::{Name}";
 
-    public string FullNameWithSignature => $"{ReturnTypeContext.FullName} {FullName}({string.Join(", ", Parameters.Select(p => p.HumanReadableSignature))})";
+    public string FullNameWithSignature => $"{ReturnType.FullName} {FullName}({string.Join(", ", Parameters.Select(p => p.HumanReadableSignature))})";
 
-    public virtual MethodAttributes Attributes => Definition?.Attributes ?? throw new("Subclasses of MethodAnalysisContext should override Attributes");
+    public virtual MethodAttributes DefaultAttributes => Definition?.Attributes ?? throw new($"Subclasses of MethodAnalysisContext should override {nameof(DefaultAttributes)}");
 
-    public TypeAnalysisContext? InjectedReturnType { get; set; }
+    public virtual MethodAttributes? OverrideAttributes { get; set; }
 
-    public int ParameterCount => Parameters.Count;
+    public MethodAttributes Attributes => OverrideAttributes ?? DefaultAttributes;
+
+    public virtual MethodImplAttributes DefaultImplAttributes => Definition?.MethodImplAttributes ?? throw new($"Subclasses of MethodAnalysisContext should override {nameof(DefaultImplAttributes)}");
+
+    public virtual MethodImplAttributes? OverrideImplAttributes { get; set; }
+
+    public MethodImplAttributes ImplAttributes => OverrideImplAttributes ?? DefaultImplAttributes;
+
+    public MethodAttributes Visibility
+    {
+        get
+        {
+            return Attributes & MethodAttributes.MemberAccessMask;
+        }
+        set
+        {
+            OverrideAttributes = (Attributes & ~MethodAttributes.MemberAccessMask) | (value & MethodAttributes.MemberAccessMask);
+        }
+    }
 
     private List<GenericParameterTypeAnalysisContext>? _genericParameters;
     public override List<GenericParameterTypeAnalysisContext> GenericParameters
@@ -90,12 +107,14 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
         }
     }
 
-    public int GenericParameterCount => GenericParameters.Count;
-
     private ushort Slot => Definition?.slot ?? ushort.MaxValue;
 
+    public virtual TypeAnalysisContext DefaultReturnType => DeclaringType?.DeclaringAssembly.ResolveIl2CppType(Definition?.RawReturnType) ?? throw new($"Subclasses of MethodAnalysisContext should override {nameof(DefaultReturnType)}");
+
+    public TypeAnalysisContext? OverrideReturnType { get; set; }
+
     //TODO Support custom attributes on return types (v31 feature)
-    public TypeAnalysisContext ReturnTypeContext => InjectedReturnType ?? DeclaringType!.DeclaringAssembly.ResolveIl2CppType(Definition!.RawReturnType!);
+    public TypeAnalysisContext ReturnType => OverrideReturnType ?? DefaultReturnType;
     
     protected Memory<byte>? rawMethodBody;
 
@@ -128,7 +147,7 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
                     var genericMethod = genericInstanceType.GenericType.Methods.FirstOrDefault(m => m.Slot == slot);
                     if (genericMethod is not null)
                     {
-                        method = new ConcreteGenericMethodAnalysisContext(genericMethod, genericInstanceType.GenericArguments.ToArray(), []);
+                        method = new ConcreteGenericMethodAnalysisContext(genericMethod, genericInstanceType.GenericArguments, []);
                         return true;
                     }
                 }
@@ -275,6 +294,18 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
     {
         ConvertedIsil = null;
         ControlFlowGraph = null;
+    }
+
+    public ConcreteGenericMethodAnalysisContext MakeGenericInstanceMethod(params IEnumerable<TypeAnalysisContext> methodGenericParameters)
+    {
+        if (this is ConcreteGenericMethodAnalysisContext methodOnGenericInstanceType)
+        {
+            return new ConcreteGenericMethodAnalysisContext(methodOnGenericInstanceType.BaseMethodContext, methodOnGenericInstanceType.TypeGenericParameters, methodGenericParameters);
+        }
+        else
+        {
+            return new ConcreteGenericMethodAnalysisContext(this, [], methodGenericParameters);
+        }
     }
 
     public override string ToString() => $"Method: {FullName}";

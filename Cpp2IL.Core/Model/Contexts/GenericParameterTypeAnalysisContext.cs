@@ -14,13 +14,15 @@ public class GenericParameterTypeAnalysisContext : ReferencedTypeAnalysisContext
 
     public sealed override string DefaultName { get; }
 
-    public sealed override string DefaultNs => "";
+    public sealed override string DefaultNamespace => "";
 
     public int Index { get; }
 
     public override Il2CppTypeEnum Type { get; }
 
-    public GenericParameterAttributes Attributes { get; }
+    public new GenericParameterAttributes DefaultAttributes { get; }
+    public new GenericParameterAttributes? OverrideAttributes { get; set; }
+    public new GenericParameterAttributes Attributes => OverrideAttributes ?? DefaultAttributes;
 
     private List<TypeAnalysisContext>? _constraintTypes;
     public List<TypeAnalysisContext> ConstraintTypes
@@ -52,7 +54,7 @@ public class GenericParameterTypeAnalysisContext : ReferencedTypeAnalysisContext
         DefaultName = name;
         Index = index;
         Type = type;
-        Attributes = attributes;
+        DefaultAttributes = attributes;
         Owner = owner;
     }
 }

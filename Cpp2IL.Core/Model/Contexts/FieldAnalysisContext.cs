@@ -27,16 +27,36 @@ public class FieldAnalysisContext : HasCustomAttributesAndName, IFieldInfoProvid
 
     public override string DefaultName => BackingData?.Field.Name!;
 
-    public Il2CppType? FieldType => BackingData?.Field.RawFieldType;
+    private Il2CppType? RawFieldType => BackingData?.Field.RawFieldType;
 
-    public virtual FieldAttributes Attributes => BackingData!.Attributes;
+    public virtual FieldAttributes DefaultAttributes => BackingData?.Attributes ?? throw new($"Subclass must override {nameof(DefaultAttributes)}");
 
-    public bool IsStatic => Attributes.HasFlag(FieldAttributes.Static);
+    public virtual FieldAttributes? OverrideAttributes { get; set; }
+
+    public FieldAttributes Attributes => OverrideAttributes ?? DefaultAttributes;
+
+    public bool IsStatic => (Attributes & FieldAttributes.Static) != 0;
 
     public int Offset => BackingData == null ? 0 : AppContext.Binary.GetFieldOffsetFromIndex(DeclaringType.Definition!.TypeIndex, BackingData.IndexInParent, BackingData.Field.FieldIndex, DeclaringType.Definition.IsValueType, IsStatic);
 
-    public virtual TypeAnalysisContext FieldTypeContext => DeclaringType.DeclaringAssembly.ResolveIl2CppType(FieldType)
-                                                           ?? throw new($"Field type {FieldType} could not be resolved.");
+    public virtual TypeAnalysisContext DefaultFieldType => DeclaringType.DeclaringAssembly.ResolveIl2CppType(RawFieldType)
+                                                           ?? throw new($"Field type {RawFieldType} could not be resolved.");
+
+    public TypeAnalysisContext? OverrideFieldType { get; set; }
+
+    public TypeAnalysisContext FieldType => OverrideFieldType ?? DefaultFieldType;
+
+    public FieldAttributes Visibility
+    {
+        get
+        {
+            return Attributes & FieldAttributes.FieldAccessMask;
+        }
+        set
+        {
+            OverrideAttributes = (Attributes & ~FieldAttributes.FieldAccessMask) | (value & FieldAttributes.FieldAccessMask);
+        }
+    }
 
 
     public FieldAnalysisContext(Il2CppFieldReflectionData? backingData, TypeAnalysisContext parent) : base(backingData?.Field.token ?? 0, parent.AppContext)
@@ -52,14 +72,14 @@ public class FieldAnalysisContext : HasCustomAttributesAndName, IFieldInfoProvid
 
     #region StableNameDotNet
 
-    public ITypeInfoProvider FieldTypeInfoProvider
-        => GetGenericParamName(FieldTypeContext) is { } name
+    ITypeInfoProvider IFieldInfoProvider.FieldTypeInfoProvider
+        => GetGenericParamName(FieldType) is { } name
             ? new GenericParameterTypeInfoProviderWrapper(name)
-            : TypeAnalysisContext.GetSndnProviderForType(AppContext, FieldType!);
+            : TypeAnalysisContext.GetSndnProviderForType(AppContext, RawFieldType!);
 
-    public string FieldName => Name;
+    string IFieldInfoProvider.FieldName => Name;
 
-    public FieldAttributes FieldAttributes => Attributes;
+    FieldAttributes IFieldInfoProvider.FieldAttributes => Attributes;
 
     private static string? GetGenericParamName(TypeAnalysisContext type) => type switch
     {

@@ -7,9 +7,9 @@ public class AttributeGeneratorMethodAnalysisContext : MethodAnalysisContext
     public override ulong UnderlyingPointer { get; }
 
     protected override bool IsInjected => true;
-    public override bool IsStatic => true;
-    public override bool IsVoid => true;
-    public override MethodAttributes Attributes => MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+    public override MethodAttributes DefaultAttributes => MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+    public override MethodImplAttributes DefaultImplAttributes => MethodImplAttributes.Managed;
+    public override TypeAnalysisContext DefaultReturnType => AppContext.SystemTypes.SystemVoidType;
     protected override int CustomAttributeIndex => -1;
 
     public readonly HasCustomAttributes AssociatedMember;
@@ -18,7 +18,6 @@ public class AttributeGeneratorMethodAnalysisContext : MethodAnalysisContext
     {
         UnderlyingPointer = pointer;
         AssociatedMember = associatedMember;
-        InjectedReturnType = AppContext.SystemTypes.SystemVoidType;
         rawMethodBody = AppContext.InstructionSet.GetRawBytesForMethod(this, true);
     }
 }

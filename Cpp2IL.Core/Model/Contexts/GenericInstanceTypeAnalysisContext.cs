@@ -13,17 +13,19 @@ public class GenericInstanceTypeAnalysisContext : ReferencedTypeAnalysisContext
 
     public List<TypeAnalysisContext> GenericArguments { get; } = [];
 
-    public override TypeAttributes TypeAttributes => GenericType.TypeAttributes;
+    public override TypeAttributes DefaultAttributes => GenericType.DefaultAttributes;
+
+    public override TypeAttributes? OverrideAttributes { get => GenericType.OverrideAttributes; set => GenericType.OverrideAttributes = value; }
 
     public override string DefaultName => $"{GenericType.Name}<{string.Join(", ", GenericArguments.Select(a => a.Name))}>";
 
-    public override string DefaultNs => GenericType.Namespace;
+    public override string DefaultNamespace => GenericType.Namespace;
+
+    public override TypeAnalysisContext? DefaultBaseType { get; }
 
     public sealed override Il2CppTypeEnum Type => Il2CppTypeEnum.IL2CPP_TYPE_GENERICINST;
 
     public sealed override bool IsGenericInstance => true;
-
-    public sealed override int GenericParameterCount => GenericArguments.Count;
 
     public sealed override bool IsValueType => GenericType.IsValueType; //We don't set a definition so the default implementation cannot determine if we're a value type or not. 
 
@@ -34,13 +36,17 @@ public class GenericInstanceTypeAnalysisContext : ReferencedTypeAnalysisContext
         GenericType = AppContext.ResolveContextForType(gClass.TypeDefinition) ?? throw new($"Could not resolve type {gClass.TypeDefinition.FullName} for generic instance base type");
 
         GenericArguments.AddRange(gClass.Context.ClassInst.Types.Select(referencedFrom.ResolveIl2CppType)!);
+
+        SetDeclaringType();
     }
 
     public GenericInstanceTypeAnalysisContext(TypeAnalysisContext genericType, IEnumerable<TypeAnalysisContext> genericArguments, AssemblyAnalysisContext referencedFrom) : base(referencedFrom)
     {
         GenericType = genericType;
         GenericArguments.AddRange(genericArguments);
-        OverrideBaseType = genericType.BaseType;
+        DefaultBaseType = genericType.BaseType;
+
+        SetDeclaringType();
     }
 
     public override string GetCSharpSourceString()
@@ -63,5 +69,16 @@ public class GenericInstanceTypeAnalysisContext : ReferencedTypeAnalysisContext
         sb.Append('>');
 
         return sb.ToString();
+    }
+
+    private void SetDeclaringType()
+    {
+        var declaringType = GenericType.DeclaringType;
+        if (declaringType is null)
+            return;
+
+        DeclaringType = declaringType.GenericParameters.Count == 0
+            ? declaringType
+            : declaringType.MakeGenericInstanceType(GenericArguments.Take(declaringType.GenericParameters.Count));
     }
 }

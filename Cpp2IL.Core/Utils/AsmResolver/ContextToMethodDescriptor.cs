@@ -14,12 +14,12 @@ public static class ContextToMethodDescriptor
 
     private static MethodSignature ToMethodSignature(this MethodAnalysisContext context, ModuleDefinition parentModule)
     {
-        var returnType = context.ReturnTypeContext.ToTypeSignature(parentModule);
+        var returnType = context.ReturnType.ToTypeSignature(parentModule);
         var parameters = context.Parameters.Select(p => p.ToTypeSignature(parentModule));
 
         return context.IsStatic
-            ? MethodSignature.CreateStatic(returnType, context.GenericParameterCount, parameters)
-            : MethodSignature.CreateInstance(returnType, context.GenericParameterCount, parameters);
+            ? MethodSignature.CreateStatic(returnType, context.GenericParameters.Count, parameters)
+            : MethodSignature.CreateInstance(returnType, context.GenericParameters.Count, parameters);
     }
 
     public static IMethodDescriptor ToMethodDescriptor(this MethodAnalysisContext context, ModuleDefinition parentModule)
@@ -37,7 +37,7 @@ public static class ContextToMethodDescriptor
             context.BaseMethodContext.ToMethodSignature(parentModule));
 
         var methodGenericParameters = context.MethodGenericParameters;
-        if (methodGenericParameters.Length == 0)
+        if (methodGenericParameters.Count == 0)
         {
             return parentModule.DefaultImporter.ImportMethod(memberReference);
         }
