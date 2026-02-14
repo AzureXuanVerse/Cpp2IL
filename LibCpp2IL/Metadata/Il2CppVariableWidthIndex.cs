@@ -14,7 +14,7 @@ namespace LibCpp2IL.Metadata;
 /// - v105 extends this to MethodIndex 
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public struct Il2CppVariableWidthIndex<T> where T : ReadableClass
+public record struct Il2CppVariableWidthIndex<T> where T : ReadableClass
 {
     //Statics here are per-T.
     private static int widthForThisTypeOnCurrentApplication = -1; // -1 means "not yet determined"
@@ -32,6 +32,9 @@ public struct Il2CppVariableWidthIndex<T> where T : ReadableClass
     public bool IsNull => value < 0; //The exact value of the "null" index depends on the width
     public bool IsNonNull => !IsNull;
     public int Value => value;
+    
+    public static Il2CppVariableWidthIndex<T> operator +(Il2CppVariableWidthIndex<T> index, Il2CppVariableWidthIndex<T> offset)
+        => new(index.value + offset.value);
 
     public Il2CppVariableWidthIndex() 
         => throw new NotSupportedException("Do not manually construct an Il2CppVariableWidthIndex. This struct is only intended to be used as a field type in other ReadableClass types, and should be read using the static Read method.");

@@ -24,11 +24,11 @@ public class Il2CppTypeReflectionData
     public Il2CppTypeReflectionData? arrayType;
     public byte arrayRank;
     public string variableGenericParamName;
-    public long variableGenericParamIndex;
+    public Il2CppVariableWidthIndex<Il2CppGenericParameter> variableGenericParamIndex;
     public bool isPointer;
 #pragma warning restore 8618
 
-    public Il2CppGenericParameter? GenericParameter => isArray || isType ? null : LibCpp2IlMain.TheMetadata?.genericParameters[(int)variableGenericParamIndex];
+    public Il2CppGenericParameter? GenericParameter => isArray || isType ? null : LibCpp2IlMain.TheMetadata?.GetGenericParameterFromIndex(variableGenericParamIndex);
 
     private string GetPtrSuffix()
     {

@@ -13,8 +13,8 @@ public static class LibCpp2IlReflection
     private static readonly ConcurrentDictionary<string, Il2CppTypeDefinition?> CachedTypesByFullName = new();
 
     private static readonly Dictionary<Il2CppTypeDefinition, Il2CppVariableWidthIndex<Il2CppTypeDefinition>> TypeIndices = new();
-    private static readonly Dictionary<Il2CppMethodDefinition, int> MethodIndices = new();
-    private static readonly Dictionary<Il2CppFieldDefinition, int> FieldIndices = new();
+    private static readonly Dictionary<Il2CppMethodDefinition, Il2CppVariableWidthIndex<Il2CppMethodDefinition>> MethodIndices = new();
+    private static readonly Dictionary<Il2CppFieldDefinition, Il2CppVariableWidthIndex<Il2CppFieldDefinition>> FieldIndices = new();
     private static readonly Dictionary<Il2CppPropertyDefinition, int> PropertyIndices = new();
 
     private static readonly Dictionary<Il2CppFieldDefinition, Il2CppTypeDefinition> FieldDeclaringTypes = new();
@@ -137,9 +137,9 @@ public static class LibCpp2IlReflection
     }
 
     // ReSharper disable InconsistentlySynchronizedField
-    public static int GetMethodIndexFromMethod(Il2CppMethodDefinition methodDefinition)
+    public static Il2CppVariableWidthIndex<Il2CppMethodDefinition> GetMethodIndexFromMethod(Il2CppMethodDefinition methodDefinition)
     {
-        if (LibCpp2IlMain.TheMetadata == null) return -1;
+        if (LibCpp2IlMain.TheMetadata == null) return Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Null;
 
         if (MethodIndices.Count == 0)
         {
@@ -148,22 +148,22 @@ public static class LibCpp2IlReflection
                 if (MethodIndices.Count == 0)
                 {
                     //Check again inside lock
-                    for (var i = 0; i < LibCpp2IlMain.TheMetadata.methodDefs.Length; i++)
+                    for (var i = 0; i < LibCpp2IlMain.TheMetadata.MethodDefinitionCount; i++)
                     {
                         var def = LibCpp2IlMain.TheMetadata.methodDefs[i];
-                        MethodIndices[def] = i;
+                        MethodIndices[def] = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.MakeTemporaryForFixedWidthUsage(i); //DynWidth: i is computed, not read from metadata, so temp usage is ok
                     }
                 }
             }
         }
 
-        return MethodIndices.GetOrDefault(methodDefinition, -1);
+        return MethodIndices.GetOrDefault(methodDefinition, Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Null);
     }
 
     // ReSharper disable InconsistentlySynchronizedField
-    public static int GetFieldIndexFromField(Il2CppFieldDefinition fieldDefinition)
+    public static Il2CppVariableWidthIndex<Il2CppFieldDefinition> GetFieldIndexFromField(Il2CppFieldDefinition fieldDefinition)
     {
-        if (LibCpp2IlMain.TheMetadata == null) return -1;
+        if (LibCpp2IlMain.TheMetadata == null) return Il2CppVariableWidthIndex<Il2CppFieldDefinition>.Null;
 
         if (FieldIndices.Count == 0)
         {
@@ -174,7 +174,7 @@ public static class LibCpp2IlReflection
                     for (var i = 0; i < LibCpp2IlMain.TheMetadata.fieldDefs.Length; i++)
                     {
                         var def = LibCpp2IlMain.TheMetadata.fieldDefs[i];
-                        FieldIndices[def] = i;
+                        FieldIndices[def] = Il2CppVariableWidthIndex<Il2CppFieldDefinition>.MakeTemporaryForFixedWidthUsage(i); //DynWidth: i is computed, not read from metadata, so temp usage is ok
                     }
                 }
             }

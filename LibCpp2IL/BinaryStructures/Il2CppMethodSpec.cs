@@ -8,11 +8,11 @@ namespace LibCpp2IL.BinaryStructures;
 
 public class Il2CppMethodSpec : ReadableClass
 {
-    public int methodDefinitionIndex;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> methodDefinitionIndex;
     public int classIndexIndex;
     public int methodIndexIndex;
 
-    public Il2CppMethodDefinition? MethodDefinition => LibCpp2IlMain.TheMetadata?.methodDefs[methodDefinitionIndex];
+    public Il2CppMethodDefinition? MethodDefinition => LibCpp2IlMain.TheMetadata?.GetMethodDefinitionFromIndex(methodDefinitionIndex);
 
     public Il2CppGenericInst? GenericClassInst => LibCpp2IlMain.Binary?.GetGenericInst(classIndexIndex);
 
@@ -43,7 +43,7 @@ public class Il2CppMethodSpec : ReadableClass
 
     public override void Read(ClassReadingBinaryReader reader)
     {
-        methodDefinitionIndex = reader.ReadInt32();
+        methodDefinitionIndex = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
         classIndexIndex = reader.ReadInt32();
         methodIndexIndex = reader.ReadInt32();
     }

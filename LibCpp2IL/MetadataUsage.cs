@@ -40,7 +40,7 @@ public class MetadataUsage(MetadataUsageType type, ulong offset, uint value)
         Type switch
         {
             MetadataUsageType.Type or MetadataUsageType.TypeInfo => value < LibCpp2IlMain.Binary!.NumTypes,
-            MetadataUsageType.MethodDef => value < LibCpp2IlMain.TheMetadata!.methodDefs.Length,
+            MetadataUsageType.MethodDef => value < LibCpp2IlMain.TheMetadata!.MethodDefinitionCount,
             MetadataUsageType.FieldInfo => value < LibCpp2IlMain.TheMetadata!.fieldRefs.Length,
             MetadataUsageType.StringLiteral => value < LibCpp2IlMain.TheMetadata!.stringLiterals.Length,
             MetadataUsageType.MethodRef => value < LibCpp2IlMain.Binary!.AllGenericMethodSpecs.Length,
@@ -82,7 +82,7 @@ public class MetadataUsage(MetadataUsageType type, ulong offset, uint value)
             switch (Type)
             {
                 case MetadataUsageType.MethodDef:
-                    _cachedMethod = LibCpp2IlMain.TheMetadata!.methodDefs[value];
+                    _cachedMethod = LibCpp2IlMain.TheMetadata!.GetMethodDefinitionFromIndex(Il2CppVariableWidthIndex<Il2CppMethodDefinition>.MakeTemporaryForFixedWidthUsage((int)value)); //DynWidth: value is always masked out of 32-bits, ok for temp usage
                     _cachedName = _cachedMethod.GlobalKey;
                     break;
                 default:
@@ -169,7 +169,7 @@ public class MetadataUsage(MetadataUsageType type, ulong offset, uint value)
             if (type is MetadataUsageType.Type or MetadataUsageType.TypeInfo && index > LibCpp2IlMain.Binary!.NumTypes)
                 return null;
 
-            if (type == MetadataUsageType.MethodDef && index > LibCpp2IlMain.TheMetadata!.methodDefs.Length)
+            if (type == MetadataUsageType.MethodDef && index > LibCpp2IlMain.TheMetadata!.MethodDefinitionCount)
                 return null;
 
 

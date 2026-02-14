@@ -82,7 +82,7 @@ public class ParameterAnalysisContext : HasCustomAttributesAndName, IParameterIn
 
             if (Attributes.HasFlag(ParameterAttributes.HasDefault))
             {
-                DefaultValue = AppContext.Metadata.GetParameterDefaultValueFromIndex(declaringMethod.Definition!.parameterStart.Value + parameterIndex)!;
+                DefaultValue = AppContext.Metadata.GetParameterDefaultValueFromIndex(Il2CppVariableWidthIndex<Il2CppParameterDefinition>.MakeTemporaryForFixedWidthUsage(declaringMethod.Definition!.parameterStart.Value + parameterIndex))!;
             }
         }
     }

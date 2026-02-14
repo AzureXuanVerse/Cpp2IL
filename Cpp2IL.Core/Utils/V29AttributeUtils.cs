@@ -25,7 +25,7 @@ public static class V29AttributeUtils
         if (ClassReadingBinaryReader.EnableReadableSizeInformation)
             context.Metadata.TrackRead<AnalyzedCustomAttribute>((int)(4 * count), trackIfFinishedReading: true);
 
-        return indices.Select(i => context.Metadata.methodDefs[i]).ToArray();
+        return indices.Select(i => context.Metadata.methodDefs[i]).ToArray(); //TODO DynWidth: Validate against v105 CA blob once we have one.
     }
 
     public static AnalyzedCustomAttribute ReadAttribute(Stream stream, MethodAnalysisContext constructor, ApplicationAnalysisContext context)

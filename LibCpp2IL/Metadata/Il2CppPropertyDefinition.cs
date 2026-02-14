@@ -8,8 +8,8 @@ namespace LibCpp2IL.Metadata;
 public class Il2CppPropertyDefinition : ReadableClass, IIl2CppTokenProvider
 {
     public int nameIndex;
-    public int get;
-    public int set;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> get;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> set;
     public uint attrs;
     [Version(Max = 24)] public int customAttributeIndex;
     public uint token;
@@ -35,9 +35,9 @@ public class Il2CppPropertyDefinition : ReadableClass, IIl2CppTokenProvider
 
     public string? Name { get; private set; }
 
-    public Il2CppMethodDefinition? Getter => LibCpp2IlMain.TheMetadata == null || get < 0 || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.methodDefs[DeclaringType.FirstMethodIdx + get];
+    public Il2CppMethodDefinition? Getter => LibCpp2IlMain.TheMetadata == null || get.IsNull || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.GetMethodDefinitionFromIndex(DeclaringType.FirstMethodIdx + get);
 
-    public Il2CppMethodDefinition? Setter => LibCpp2IlMain.TheMetadata == null || set < 0 || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.methodDefs[DeclaringType.FirstMethodIdx + set];
+    public Il2CppMethodDefinition? Setter => LibCpp2IlMain.TheMetadata == null || set.IsNull || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.GetMethodDefinitionFromIndex(DeclaringType.FirstMethodIdx + set);
 
     public Il2CppTypeReflectionData? PropertyType => LibCpp2IlMain.TheMetadata == null ? null : Getter == null ? Setter!.Parameters![0].Type : Getter!.ReturnType;
 
@@ -55,8 +55,8 @@ public class Il2CppPropertyDefinition : ReadableClass, IIl2CppTokenProvider
         Name = ((Il2CppMetadata)reader).ReadStringFromIndexNoReadLock(nameIndex);
         reader.Position = pos;
 
-        get = reader.ReadInt32();
-        set = reader.ReadInt32();
+        get = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
+        set = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
         attrs = reader.ReadUInt32();
 
         if (IsAtMost(24f))

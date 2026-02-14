@@ -25,7 +25,7 @@ public class Il2CppMetadata : ClassReadingBinaryReader
     public uint[] VTableMethodIndices;
     public Il2CppMethodDefinition[] methodDefs;
     private Il2CppParameterDefinition[] parameterDefs;
-    public Il2CppFieldDefinition[] fieldDefs;
+    internal Il2CppFieldDefinition[] fieldDefs;
     private Il2CppFieldDefaultValue[] fieldDefaultValues;
     private Il2CppParameterDefaultValue[] parameterDefaultValues;
     internal Il2CppPropertyDefinition[] propertyDefs;
@@ -49,17 +49,28 @@ public class Il2CppMetadata : ClassReadingBinaryReader
     private Il2CppEventDefinition[] eventDefs;
     private Il2CppGenericContainer[] genericContainers;
     public Il2CppFieldRef[] fieldRefs;
-    public Il2CppGenericParameter[] genericParameters;
+    private Il2CppGenericParameter[] genericParameters;
     public int[] constraintIndices;
 
     public int[] referencedAssemblies;
 
-    private readonly Dictionary<int, Il2CppFieldDefaultValue> _fieldDefaultValueLookup = new Dictionary<int, Il2CppFieldDefaultValue>();
-    private readonly Dictionary<Il2CppFieldDefinition, Il2CppFieldDefaultValue> _fieldDefaultLookupNew = new Dictionary<Il2CppFieldDefinition, Il2CppFieldDefaultValue>();
+    private readonly Dictionary<Il2CppVariableWidthIndex<Il2CppFieldDefinition>, Il2CppFieldDefaultValue> _fieldDefaultValueLookup = new();
+    private readonly Dictionary<Il2CppFieldDefinition, Il2CppFieldDefaultValue> _fieldDefaultLookupNew = new();
     
     public int TypeDefinitionCount => typeDefs.Length;
+    public int MethodDefinitionCount => methodDefs.Length;
 
     public static bool HasMetadataHeader(byte[] bytes) => bytes.Length >= 4 && BitConverter.ToUInt32(bytes, 0) == 0xFAB11BAF;
+    
+    internal static int GetIndexWidth(int elementCount)
+    {
+        return elementCount switch
+        {
+            <= byte.MaxValue => sizeof(byte),
+            <= ushort.MaxValue => sizeof(ushort),
+            _ => sizeof(int)
+        };
+    }
 
     public static Il2CppMetadata ReadFrom(byte[] bytes, UnityVersion unityVersion)
     {
@@ -70,9 +81,9 @@ public class Il2CppMetadata : ClassReadingBinaryReader
         }
 
         var version = BitConverter.ToInt32(bytes, 4);
-        if (version is < 23 or > 104)
+        if (version is < 23 or > 106)
         {
-            throw new FormatException("Unsupported metadata version found! We support 23-104, got " + version);
+            throw new FormatException("Unsupported metadata version found! We support 23-106, got " + version);
         }
 
         LibLogger.VerboseNewline($"\tIL2CPP Metadata Declares its version as {version}");
@@ -149,6 +160,7 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             //  - changes MethodIndex to variable size.
             //  - brings the Il2CppClass changes from v38 to v10x.
             //6.5.0a6 => v106
+            //  - changes GenericParameterIndex, FieldIndex, DefaultValueDataIndex to variable size
             //  - changes Il2CppGenericContainer type_argc int32 => uint16, is_method int32 => uint8
             actualVersion = version;
         }
@@ -171,15 +183,6 @@ public class Il2CppMetadata : ClassReadingBinaryReader
         if (metadataVersion >= 38)
         {
             //Need to init dynamic widths
-            static int GetIndexWidth(int elementCount)
-            {
-                return elementCount switch
-                {
-                    <= byte.MaxValue => sizeof(byte),
-                    <= ushort.MaxValue => sizeof(ushort),
-                    _ => sizeof(int)
-                };
-            }
             
             //We're on v38 or later so we know we can use .Count on these header sections.
             var typeDefinitionIndexWidth = GetIndexWidth(metadataHeader.typeDefinitions.Count);
@@ -199,10 +202,21 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             var propertyIndexWidth = metadataVersion >= 104 ? GetIndexWidth(metadataHeader.properties.Count) : sizeof(int);
             var nestedTypeIndexWidth = metadataVersion >= 104 ? GetIndexWidth(metadataHeader.nestedTypes.Count) : sizeof(int);
             
+            //v105 extends dynamic widths to method definitions as well
+            var methodDefinitionIndexWidth = metadataVersion >= 105 ? GetIndexWidth(metadataHeader.methods.Count) : sizeof(int);
+            
+            //v106 extends dynamic widths to generic parameters, field indices, and default value data indices
+            var genericParameterIndexWidth = metadataVersion >= 106 ? GetIndexWidth(metadataHeader.genericParameters.Count) : sizeof(int);
+            var fieldIndexWidth = metadataVersion >= 106 ? GetIndexWidth(metadataHeader.fields.Count) : sizeof(int);
+            var defaultValueDataIndexWidth = metadataVersion >= 106 ? GetIndexWidth(metadataHeader.fieldAndParameterDefaultValueData.Count) : sizeof(int);
+            
             LibLogger.VerboseNewline($"\tDetermined variable index widths - Il2CppTypeDefinition: {typeDefinitionIndexWidth * 8} bits, Il2CppGenericContainer: {genericContainerIndexWidth * 8} bits, Il2CppType: {typeIndexSize * 8} bits, Il2CppParameterDefinition: {parameterDefinitionIndexWidth * 8} bits");
             
             if(metadataVersion >= 104)
                 LibLogger.VerboseNewline($"\t...InterfaceIndex: {interfaceOffsetIndexWidth * 8} bits, EventIndex: {eventIndexWidth * 8} bits, PropertyIndex: {propertyIndexWidth * 8} bits, NestedTypeIndex: {nestedTypeIndexWidth * 8} bits");
+            
+            if(metadataVersion >= 105)
+                LibLogger.VerboseNewline($"\t...MethodDefinitionIndex: {methodDefinitionIndexWidth * 8} bits, GenericParameterIndex: {genericParameterIndexWidth * 8} bits, FieldIndex: {fieldIndexWidth * 8} bits, DefaultValueDataIndex: {defaultValueDataIndexWidth * 8} bits");
             
             
             Il2CppVariableWidthIndex<Il2CppType>.BeginReadSession(typeIndexSize);
@@ -214,6 +228,11 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             Il2CppVariableWidthIndex<Il2CppEventDefinition>.BeginReadSession(eventIndexWidth);
             Il2CppVariableWidthIndex<Il2CppPropertyDefinition>.BeginReadSession(propertyIndexWidth);
             Il2CppVariableWidthIndex<Il2CppNestedTypeIndex>.BeginReadSession(nestedTypeIndexWidth);
+            
+            Il2CppVariableWidthIndex<Il2CppMethodDefinition>.BeginReadSession(methodDefinitionIndexWidth);
+            Il2CppVariableWidthIndex<Il2CppGenericParameter>.BeginReadSession(genericParameterIndexWidth);
+            Il2CppVariableWidthIndex<Il2CppFieldDefinition>.BeginReadSession(fieldIndexWidth);
+            Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy>.BeginReadSession(defaultValueDataIndexWidth);
         }
         else
         {
@@ -230,6 +249,11 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             Il2CppVariableWidthIndex<Il2CppEventDefinition>.BeginReadSessionOnLegacyVersion();
             Il2CppVariableWidthIndex<Il2CppPropertyDefinition>.BeginReadSessionOnLegacyVersion();
             Il2CppVariableWidthIndex<Il2CppNestedTypeIndex>.BeginReadSessionOnLegacyVersion();
+            
+            Il2CppVariableWidthIndex<Il2CppMethodDefinition>.BeginReadSessionOnLegacyVersion();
+            Il2CppVariableWidthIndex<Il2CppGenericParameter>.BeginReadSessionOnLegacyVersion();
+            Il2CppVariableWidthIndex<Il2CppFieldDefinition>.BeginReadSessionOnLegacyVersion();
+            Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy>.BeginReadSessionOnLegacyVersion();
         }
 
         try
@@ -395,7 +419,7 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             foreach (var il2CppFieldDefaultValue in fieldDefaultValues)
             {
                 _fieldDefaultValueLookup[il2CppFieldDefaultValue.fieldIndex] = il2CppFieldDefaultValue;
-                _fieldDefaultLookupNew[fieldDefs[il2CppFieldDefaultValue.fieldIndex]] = il2CppFieldDefaultValue;
+                _fieldDefaultLookupNew[GetFieldDefinitionFromIndex(il2CppFieldDefaultValue.fieldIndex)] = il2CppFieldDefaultValue;
             }
 
             LibLogger.VerboseNewline($"OK ({(DateTime.Now - start).TotalMilliseconds} ms)");
@@ -412,6 +436,11 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             Il2CppVariableWidthIndex<Il2CppEventDefinition>.EndReadSession();
             Il2CppVariableWidthIndex<Il2CppPropertyDefinition>.EndReadSession();
             Il2CppVariableWidthIndex<Il2CppNestedTypeIndex>.EndReadSession();
+            
+            Il2CppVariableWidthIndex<Il2CppMethodDefinition>.EndReadSession();
+            Il2CppVariableWidthIndex<Il2CppGenericParameter>.EndReadSession();
+            Il2CppVariableWidthIndex<Il2CppFieldDefinition>.EndReadSession();
+            Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy>.EndReadSession();
         }
     }
 #pragma warning restore 8618
@@ -501,7 +530,7 @@ public class Il2CppMetadata : ClassReadingBinaryReader
     }
 
     //Getters for human readability
-    public Il2CppFieldDefaultValue? GetFieldDefaultValueFromIndex(int index)
+    public Il2CppFieldDefaultValue? GetFieldDefaultValueFromIndex(Il2CppVariableWidthIndex<Il2CppFieldDefinition> index)
     {
         return _fieldDefaultValueLookup.GetOrDefault(index);
     }
@@ -511,31 +540,31 @@ public class Il2CppMetadata : ClassReadingBinaryReader
         return _fieldDefaultLookupNew.GetOrDefault(field);
     }
 
-    public (int ptr, Il2CppVariableWidthIndex<Il2CppType> type) GetFieldDefaultValue(int fieldIdx)
+    public (Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy> ptr, Il2CppVariableWidthIndex<Il2CppType> type) GetFieldDefaultValue(Il2CppVariableWidthIndex<Il2CppFieldDefinition> fieldIdx)
     {
-        var fieldDef = fieldDefs[fieldIdx];
+        var fieldDef = GetFieldDefinitionFromIndex(fieldIdx);
         var fieldType = LibCpp2IlMain.Binary!.GetType(fieldDef.typeIndex);
         if ((fieldType.Attrs & (int)FieldAttributes.HasFieldRVA) != 0)
         {
             var fieldDefault = GetFieldDefaultValueFromIndex(fieldIdx);
 
             if (fieldDefault == null)
-                return (-1, Il2CppVariableWidthIndex<Il2CppType>.Null);
+                return (Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy>.Null, Il2CppVariableWidthIndex<Il2CppType>.Null);
 
             return (ptr: fieldDefault.dataIndex, type: fieldDefault.typeIndex);
         }
 
-        return (-1, Il2CppVariableWidthIndex<Il2CppType>.Null);
+        return (Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy>.Null, Il2CppVariableWidthIndex<Il2CppType>.Null);
     }
 
-    public Il2CppParameterDefaultValue? GetParameterDefaultValueFromIndex(int index)
+    public Il2CppParameterDefaultValue? GetParameterDefaultValueFromIndex(Il2CppVariableWidthIndex<Il2CppParameterDefinition> index)
     {
         return parameterDefaultValues.FirstOrDefault(x => x.parameterIndex == index);
     }
 
-    public int GetDefaultValueFromIndex(int index)
+    public int GetDefaultValueFromIndex(Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy> index)
     {
-        return metadataHeader.fieldAndParameterDefaultValueData.Offset + index;
+        return metadataHeader.fieldAndParameterDefaultValueData.Offset + index.Value;
     }
 
     /// <summary>
@@ -610,6 +639,15 @@ public class Il2CppMetadata : ClassReadingBinaryReader
     public Il2CppPropertyDefinition[] GetPropertyDefinitionsFromIndexAndCount(Il2CppVariableWidthIndex<Il2CppPropertyDefinition> index, int count) => propertyDefs.SubArray(index.Value, count);
     
     public Il2CppEventDefinition[] GetEventDefinitionsFromIndexAndCount(Il2CppVariableWidthIndex<Il2CppEventDefinition> index, int count) => eventDefs.SubArray(index.Value, count);
+    
+    public Il2CppMethodDefinition GetMethodDefinitionFromIndex(Il2CppVariableWidthIndex<Il2CppMethodDefinition> index) => methodDefs[index.Value];
+    
+    public Il2CppMethodDefinition[] GetMethodDefinitionsFromIndexAndCount(Il2CppVariableWidthIndex<Il2CppMethodDefinition> index, int count) => methodDefs.SubArray(index.Value, count);
+    
+    public Il2CppGenericParameter GetGenericParameterFromIndex(Il2CppVariableWidthIndex<Il2CppGenericParameter> index) => genericParameters[index.Value];
+    
+    public Il2CppFieldDefinition GetFieldDefinitionFromIndex(Il2CppVariableWidthIndex<Il2CppFieldDefinition> index) => fieldDefs[index.Value];
+    public Il2CppFieldDefinition[] GetFieldDefinitionsFromIndexAndCount(Il2CppVariableWidthIndex<Il2CppFieldDefinition> index, int count) => fieldDefs.SubArray(index.Value, count);
 
     public string GetStringLiteralFromIndex(uint index)
     {

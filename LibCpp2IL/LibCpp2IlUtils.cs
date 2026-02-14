@@ -73,12 +73,10 @@ public static class LibCpp2ILUtils
         var names = new List<string>();
         if (typeDef.GenericContainer is not {} genericContainer) 
             return ret;
-
-        for (var i = 0; i < genericContainer.genericParameterCount; i++)
+        
+        foreach (var parameter in genericContainer.GenericParameters)
         {
-            var genericParameterIndex = genericContainer.genericParameterStart + i;
-            var param = metadata.genericParameters[genericParameterIndex];
-            names.Add(metadata.GetStringFromIndex(param.nameIndex));
+            names.Add(metadata.GetStringFromIndex(parameter.nameIndex));
         }
 
         ret = ret.Replace($"`{genericContainer.genericParameterCount}", "");
@@ -136,7 +134,7 @@ public static class LibCpp2ILUtils
             case Il2CppTypeEnum.IL2CPP_TYPE_VAR:
             case Il2CppTypeEnum.IL2CPP_TYPE_MVAR:
             {
-                var param = metadata.genericParameters[type.Data.GenericParameterIndex];
+                var param = metadata.GetGenericParameterFromIndex(type.Data.GenericParameterIndex);
                 ret = metadata.GetStringFromIndex(param.nameIndex);
                 break;
             }
@@ -167,12 +165,12 @@ public static class LibCpp2ILUtils
         return ret;
     }
 
-    internal static object? GetDefaultValue(int dataIndex, Il2CppVariableWidthIndex<Il2CppType> typeIndex)
+    internal static object? GetDefaultValue(Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy> dataIndex, Il2CppVariableWidthIndex<Il2CppType> typeIndex)
     {
         var metadata = LibCpp2IlMain.TheMetadata!;
         var theDll = LibCpp2IlMain.Binary!;
 
-        if (dataIndex == -1)
+        if (dataIndex.IsNull)
             return null; //Literally null.
 
         var pointer = metadata.GetDefaultValueFromIndex(dataIndex);
@@ -313,7 +311,7 @@ public static class LibCpp2ILUtils
             case Il2CppTypeEnum.IL2CPP_TYPE_VAR:
             case Il2CppTypeEnum.IL2CPP_TYPE_MVAR:
             {
-                var param = LibCpp2IlMain.TheMetadata.genericParameters[forWhat.Data.GenericParameterIndex];
+                var param = LibCpp2IlMain.TheMetadata.GetGenericParameterFromIndex(forWhat.Data.GenericParameterIndex);
                 var genericName = LibCpp2IlMain.TheMetadata.GetStringFromIndex(param.nameIndex);
 
                 return new()

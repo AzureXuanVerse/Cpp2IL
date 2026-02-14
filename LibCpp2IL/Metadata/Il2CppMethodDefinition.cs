@@ -32,7 +32,7 @@ public class Il2CppMethodDefinition : ReadableClass
 
     public bool IsStatic => (Attributes & MethodAttributes.Static) != 0;
 
-    public int MethodIndex => LibCpp2IlReflection.GetMethodIndexFromMethod(this);
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> MethodIndex => LibCpp2IlReflection.GetMethodIndexFromMethod(this);
 
     public string? Name { get; private set; }
 
@@ -120,7 +120,9 @@ public class Il2CppMethodDefinition : ReadableClass
                     {
                         var paramType = LibCpp2IlMain.Binary!.GetType(paramDef.typeIndex);
                         var paramFlags = (ParameterAttributes)paramType.Attrs;
-                        var paramDefaultData = (paramFlags & ParameterAttributes.HasDefault) != 0 ? LibCpp2IlMain.TheMetadata!.GetParameterDefaultValueFromIndex(parameterStart.Value + idx) : null;
+                        var paramDefaultData = (paramFlags & ParameterAttributes.HasDefault) != 0 
+                            ? LibCpp2IlMain.TheMetadata!.GetParameterDefaultValueFromIndex(Il2CppVariableWidthIndex<Il2CppParameterDefinition>.MakeTemporaryForFixedWidthUsage(parameterStart.Value + idx)) //DynamicWidth: value is computed so temp usage is ok
+                            : null;
                         return new Il2CppParameterReflectionData
                         {
                             Type = LibCpp2ILUtils.GetTypeReflectionData(paramType)!,

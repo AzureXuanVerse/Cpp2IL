@@ -379,7 +379,7 @@ public static class AsmResolverAssemblyPopulator
 
                 if (defaultValueData?.ContainedDefaultValue is { } constVal)
                     parameterDefinitions[i].Constant = AsmResolverConstants.GetOrCreateConstant(constVal);
-                else if (defaultValueData is { dataIndex: -1 })
+                else if (defaultValueData is { dataIndex.IsNull: true })
                 {
                     //Literal null
                     parameterDefinitions[i].Constant = AsmResolverConstants.Null;

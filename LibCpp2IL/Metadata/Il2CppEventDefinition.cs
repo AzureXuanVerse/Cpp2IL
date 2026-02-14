@@ -10,9 +10,9 @@ public class Il2CppEventDefinition : ReadableClass
 {
     public int nameIndex;
     public Il2CppVariableWidthIndex<Il2CppType> typeIndex;
-    public int add;
-    public int remove;
-    public int raise;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> add;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> remove;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> raise;
     [Version(Max = 24)] public int customAttributeIndex; //Not in 24.1 or 24.2
     public uint token;
 
@@ -39,11 +39,11 @@ public class Il2CppEventDefinition : ReadableClass
 
     public EventAttributes EventAttributes => (EventAttributes)RawType!.Attrs;
 
-    public Il2CppMethodDefinition? Adder => LibCpp2IlMain.TheMetadata == null || add < 0 || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.methodDefs[DeclaringType.FirstMethodIdx + add];
+    public Il2CppMethodDefinition? Adder => LibCpp2IlMain.TheMetadata == null || add.IsNull || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.GetMethodDefinitionFromIndex(DeclaringType.FirstMethodIdx + add);
 
-    public Il2CppMethodDefinition? Remover => LibCpp2IlMain.TheMetadata == null || remove < 0 || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.methodDefs[DeclaringType.FirstMethodIdx + remove];
+    public Il2CppMethodDefinition? Remover => LibCpp2IlMain.TheMetadata == null || remove.IsNull || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.GetMethodDefinitionFromIndex(DeclaringType.FirstMethodIdx + remove);
 
-    public Il2CppMethodDefinition? Invoker => LibCpp2IlMain.TheMetadata == null || raise < 0 || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.methodDefs[DeclaringType.FirstMethodIdx + raise];
+    public Il2CppMethodDefinition? Invoker => LibCpp2IlMain.TheMetadata == null || raise.IsNull || DeclaringType == null ? null : LibCpp2IlMain.TheMetadata.GetMethodDefinitionFromIndex(DeclaringType.FirstMethodIdx + raise);
 
     public bool IsStatic
     {
@@ -68,9 +68,9 @@ public class Il2CppEventDefinition : ReadableClass
         reader.Position = pos;
 
         typeIndex = Il2CppVariableWidthIndex<Il2CppType>.Read(reader);
-        add = reader.ReadInt32();
-        remove = reader.ReadInt32();
-        raise = reader.ReadInt32();
+        add = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
+        remove = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
+        raise = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
         if (IsAtMost(24f))
             customAttributeIndex = reader.ReadInt32();
         token = reader.ReadUInt32();

@@ -16,7 +16,7 @@ public class Il2CppFieldDefinition : ReadableClass
     public Il2CppType? RawFieldType => LibCpp2IlMain.Binary?.GetType(typeIndex);
     public Il2CppTypeReflectionData? FieldType => RawFieldType == null ? null : LibCpp2ILUtils.GetTypeReflectionData(RawFieldType);
 
-    public int FieldIndex => LibCpp2IlReflection.GetFieldIndexFromField(this);
+    public Il2CppVariableWidthIndex<Il2CppFieldDefinition> FieldIndex => LibCpp2IlReflection.GetFieldIndexFromField(this);
 
     public Il2CppFieldDefaultValue? DefaultValue => LibCpp2IlMain.TheMetadata?.GetFieldDefaultValue(this);
 

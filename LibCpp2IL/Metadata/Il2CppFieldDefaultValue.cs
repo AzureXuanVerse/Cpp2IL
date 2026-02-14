@@ -4,16 +4,16 @@ namespace LibCpp2IL.Metadata;
 
 public class Il2CppFieldDefaultValue : ReadableClass
 {
-    public int fieldIndex;
+    public Il2CppVariableWidthIndex<Il2CppFieldDefinition> fieldIndex;
     public Il2CppVariableWidthIndex<Il2CppType> typeIndex;
-    public int dataIndex;
+    public Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy> dataIndex;
 
-    public object? Value => dataIndex <= 0 ? null : LibCpp2ILUtils.GetDefaultValue(dataIndex, typeIndex);
+    public object? Value => dataIndex.IsNull ? null : LibCpp2ILUtils.GetDefaultValue(dataIndex, typeIndex);
 
     public override void Read(ClassReadingBinaryReader reader)
     {
-        fieldIndex = reader.ReadInt32();
+        fieldIndex = Il2CppVariableWidthIndex<Il2CppFieldDefinition>.Read(reader);
         typeIndex = Il2CppVariableWidthIndex<Il2CppType>.Read(reader);
-        dataIndex = reader.ReadInt32();
+        dataIndex = Il2CppVariableWidthIndex<Il2CppDefaultValueDataDummy>.Read(reader);
     }
 }

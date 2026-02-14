@@ -27,9 +27,9 @@ public class Il2CppGenericParameter : ReadableClass
             .ToArray();
 
     /// <summary>
-    /// The index of this generic parameter in <see cref="Il2CppMetadata.genericParameters"/>
+    /// The index of this generic parameter to be passed to <see cref="Il2CppMetadata.GetGenericParameterFromIndex"/> to obtain this instance
     /// </summary>
-    public int Index { get; internal set; }
+    public Il2CppVariableWidthIndex<Il2CppGenericParameter> Index { get; internal set; }
 
     public Il2CppGenericContainer Owner => LibCpp2IlMain.TheMetadata!.GetGenericContainerFromIndex(ownerIndex);
 

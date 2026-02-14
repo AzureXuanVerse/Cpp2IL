@@ -29,8 +29,8 @@ public class Il2CppTypeDefinition : ReadableClass
 
     public uint Flags;
 
-    public int FirstFieldIdx;
-    public int FirstMethodIdx;
+    public Il2CppVariableWidthIndex<Il2CppFieldDefinition> FirstFieldIdx;
+    public Il2CppVariableWidthIndex<Il2CppMethodDefinition> FirstMethodIdx;
     public Il2CppVariableWidthIndex<Il2CppEventDefinition> FirstEventId;
     public Il2CppVariableWidthIndex<Il2CppPropertyDefinition> FirstPropertyId;
     public Il2CppVariableWidthIndex<Il2CppNestedTypeIndex> NestedTypesStart;
@@ -230,14 +230,10 @@ public class Il2CppTypeDefinition : ReadableClass
             if (LibCpp2IlMain.TheMetadata == null)
                 return null;
 
-            if (FirstFieldIdx < 0 || FieldCount == 0)
+            if (FirstFieldIdx.IsNull || FieldCount == 0)
                 return [];
 
-            var ret = new Il2CppFieldDefinition[FieldCount];
-
-            Array.Copy(LibCpp2IlMain.TheMetadata.fieldDefs, FirstFieldIdx, ret, 0, FieldCount);
-
-            return ret;
+            return LibCpp2IlMain.TheMetadata.GetFieldDefinitionsFromIndexAndCount(FirstFieldIdx, FieldCount);
         }
     }
 
@@ -287,14 +283,10 @@ public class Il2CppTypeDefinition : ReadableClass
             if (LibCpp2IlMain.TheMetadata == null)
                 return null;
 
-            if (FirstMethodIdx < 0 || MethodCount == 0)
+            if (FirstMethodIdx.IsNull || MethodCount == 0)
                 return [];
 
-            var ret = new Il2CppMethodDefinition[MethodCount];
-
-            Array.Copy(LibCpp2IlMain.TheMetadata.methodDefs, FirstMethodIdx, ret, 0, MethodCount);
-
-            return ret;
+            return LibCpp2IlMain.TheMetadata.GetMethodDefinitionsFromIndexAndCount(FirstMethodIdx, MethodCount);
         }
     }
 
@@ -404,8 +396,8 @@ public class Il2CppTypeDefinition : ReadableClass
         GenericContainerIndex = Il2CppVariableWidthIndex<Il2CppGenericContainer>.Read(reader);
         Flags = reader.ReadUInt32();
 
-        FirstFieldIdx = reader.ReadInt32();
-        FirstMethodIdx = reader.ReadInt32();
+        FirstFieldIdx = Il2CppVariableWidthIndex<Il2CppFieldDefinition>.Read(reader);
+        FirstMethodIdx = Il2CppVariableWidthIndex<Il2CppMethodDefinition>.Read(reader);
         FirstEventId = Il2CppVariableWidthIndex<Il2CppEventDefinition>.Read(reader);
         FirstPropertyId = Il2CppVariableWidthIndex<Il2CppPropertyDefinition>.Read(reader);
         NestedTypesStart = Il2CppVariableWidthIndex<Il2CppNestedTypeIndex>.Read(reader);
