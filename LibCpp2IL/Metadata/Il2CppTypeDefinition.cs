@@ -11,7 +11,7 @@ public class Il2CppTypeDefinition : ReadableClass
     public int NameIndex;
     public int NamespaceIndex;
     [Version(Max = 24)] public int CustomAttributeIndex;
-    public int ByvalTypeIndex;
+    public Il2CppVariableWidthIndex<Il2CppType> ByvalTypeIndex;
 
     [Version(Max = 24.5f)] //Removed in v27 
     public int ByrefTypeIndex;
@@ -78,7 +78,7 @@ public class Il2CppTypeDefinition : ReadableClass
 
     public TypeAttributes Attributes => (TypeAttributes)Flags;
 
-    public Il2CppType RawType => LibCpp2IlMain.Binary!.AllTypes[ByvalTypeIndex];
+    public Il2CppType RawType => LibCpp2IlMain.Binary!.GetType(ByvalTypeIndex);
 
     public Il2CppTypeDefinitionSizes RawSizes
     {
@@ -376,7 +376,7 @@ public class Il2CppTypeDefinition : ReadableClass
         if (IsAtMost(24f))
             CustomAttributeIndex = reader.ReadInt32();
 
-        ByvalTypeIndex = reader.ReadInt32();
+        ByvalTypeIndex = Il2CppVariableWidthIndex<Il2CppType>.Read(reader);
 
         if (IsLessThan(27f))
             ByrefTypeIndex = reader.ReadInt32();

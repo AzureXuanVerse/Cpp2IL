@@ -50,7 +50,7 @@ public class Il2CppMetadata : ClassReadingBinaryReader
     private Il2CppGenericContainer[] genericContainers;
     public Il2CppFieldRef[] fieldRefs;
     private Il2CppGenericParameter[] genericParameters;
-    public int[] constraintIndices;
+    public Il2CppVariableWidthIndex<Il2CppType>[] constraintIndices;
 
     public int[] referencedAssemblies;
 
@@ -340,7 +340,7 @@ public class Il2CppMetadata : ClassReadingBinaryReader
 
             LibLogger.Verbose("\tReading generic parameter constraint indices...");
             start = DateTime.Now;
-            constraintIndices = ReadClassArrayAtRawAddr<int>(metadataHeader.genericParameterConstraints.Offset, metadataHeader.genericParameterConstraints.Size / sizeof(int));
+            constraintIndices = ReadIndexArrayAtRawAddress<Il2CppType>(metadataHeader.genericParameterConstraints.Offset, metadataHeader.genericParameterConstraints.Size / sizeof(int));
             LibLogger.VerboseNewline($"OK ({(DateTime.Now - start).TotalMilliseconds} ms)");
 
             LibLogger.Verbose("\tReading referenced assemblies...");

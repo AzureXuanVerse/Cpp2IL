@@ -22,7 +22,6 @@ public class Il2CppGenericParameter : ReadableClass
         : LibCpp2IlMain.TheMetadata!.constraintIndices
             .Skip(constraintsStart)
             .Take(constraintsCount)
-            .Select(Il2CppVariableWidthIndex<Il2CppType>.MakeTemporaryForFixedWidthUsage) // DynWidth: constraintIndices is always int, so making temp is ok
             .Select(LibCpp2IlMain.Binary!.GetType)
             .ToArray();
 
