@@ -5,6 +5,10 @@ namespace LibCpp2IL.BinaryStructures;
 
 public class Il2CppRGCTXDefinition : ReadableClass
 {
+    // Populated by Il2CppBinary.Init (codegen module init) for per-context usage.
+    internal Il2CppBinary? OwningBinary { get; set; }
+    internal Il2CppMetadata? OwningMetadata { get; set; }
+
     public Il2CppRGCTXDataType type;
     public int _rawIndex;
 
@@ -12,9 +16,25 @@ public class Il2CppRGCTXDefinition : ReadableClass
 
     public int TypeIndex => _defData?.TypeIndex ?? _constrainedData!.TypeIndex;
 
-    public Il2CppMethodSpec? MethodSpec => LibCpp2IlMain.Binary?.GetMethodSpec(MethodIndex);
+    public Il2CppMethodSpec? MethodSpec
+    {
+        get
+        {
+            var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+            return binary?.GetMethodSpec(MethodIndex);
+        }
+    }
 
-    public Il2CppTypeReflectionData? Type => LibCpp2ILUtils.GetTypeReflectionData(LibCpp2IlMain.Binary!.GetType(Il2CppVariableWidthIndex<Il2CppType>.MakeTemporaryForFixedWidthUsage(TypeIndex)));
+    public Il2CppTypeReflectionData? Type
+    {
+        get
+        {
+            var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+            if (binary == null) return null;
+            var t = binary.GetType(Il2CppVariableWidthIndex<Il2CppType>.MakeTemporaryForFixedWidthUsage(TypeIndex));
+            return LibCpp2ILUtils.GetTypeReflectionData(t);
+        }
+    }
 
 
     public class Il2CppRGCTXDefinitionData : ReadableClass
@@ -45,6 +65,7 @@ public class Il2CppRGCTXDefinition : ReadableClass
     private Il2CppRGCTXConstrainedData? _constrainedData;
 
     private Il2CppRGCTXDefinitionData? _defData;
+
     public override void Read(ClassReadingBinaryReader reader)
     {
         type = IsLessThan(29) ? (Il2CppRGCTXDataType)reader.ReadInt32() : (Il2CppRGCTXDataType)reader.ReadInt64();
@@ -56,24 +77,30 @@ public class Il2CppRGCTXDefinition : ReadableClass
         else
         {
             var va = reader.ReadNUint();
+            var bakPosition = reader.Position;
+
+            var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+            if (binary == null)
+            {
+                // Can't resolve VA -> raw without a binary context. Leave as-is.
+                reader.Position = bakPosition;
+                return;
+            }
+
+            reader.Position = binary.MapVirtualAddressToRaw(va);
+
             if (type == Il2CppRGCTXDataType.IL2CPP_RGCTX_DATA_CONSTRAINED)
             {
-                var bakPosition = reader.Position;
-                reader.Position = LibCpp2IlMain.Binary!.MapVirtualAddressToRaw(va);
                 _constrainedData = new Il2CppRGCTXConstrainedData();
                 _constrainedData.Read(reader);
-                reader.Position = bakPosition;
             }
             else
             {
-                var bakPosition = reader.Position;
-                reader.Position = LibCpp2IlMain.Binary!.MapVirtualAddressToRaw(va);
                 _defData = new Il2CppRGCTXDefinitionData();
                 _defData.Read(reader);
-                reader.Position = bakPosition;
             }
 
+            reader.Position = bakPosition;
         }
-
     }
 }

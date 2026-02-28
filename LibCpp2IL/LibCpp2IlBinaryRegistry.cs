@@ -69,7 +69,7 @@ public static class LibCpp2IlBinaryRegistry
         var binary = match.FactoryFunc(memStream);
         binary.SetMetadataVersion(metadata.MetadataVersion);
 
-        LibCpp2IlMain.Binary = binary;
+        // NOTE: Do not write to LibCpp2IlMain.Binary here. The binary registry is global, but the loaded binary is per-context.
 
         var (codereg, metareg) = binary.FindCodeAndMetadataReg(metadata);
 

@@ -28,9 +28,15 @@ public static class LibCpp2IlMain
 
     public static readonly LibCpp2IlSettings Settings = new();
 
+    /// <summary>
+    /// Backwards-compatible default context. Existing static APIs are effectively wrappers around this.
+    /// New code should prefer creating and passing around a <see cref="LibCpp2IlContext"/>.
+    /// </summary>
+    public static LibCpp2IlContext? DefaultContext { get; set; }
+
     public static bool Il2CppTypeHasNumMods5Bits;
-    public static float MetadataVersion => TheMetadata!.MetadataVersion;
-    
+    public static float MetadataVersion => DefaultContext?.MetadataVersion ?? TheMetadata!.MetadataVersion;
+
     public static Il2CppBinary? Binary;
     public static Il2CppMetadata? TheMetadata;
 
@@ -40,6 +46,12 @@ public static class LibCpp2IlMain
     {
         LibCpp2IlGlobalMapper.Reset();
         MethodsByPtr.Clear();
+
+        DefaultContext = null;
+        Binary = null;
+        TheMetadata = null;
+
+        // Note: reflection caches are per-context now; legacy static caches are not reset here.
     }
 
     public static List<Il2CppMethodDefinition>? GetManagedMethodImplementationsAtAddress(ulong addr)
@@ -147,49 +159,26 @@ public static class LibCpp2IlMain
     /// <throws><see cref="System.NotSupportedException"/> if the PE file specifies it is neither for AMD64 or i386 architecture</throws>
     public static bool Initialize(byte[] binaryBytes, byte[] metadataBytes, UnityVersion unityVersion)
     {
-        LibCpp2IlReflection.ResetCaches();
+        DefaultContext = LibCpp2IlContext.Initialize(binaryBytes, metadataBytes, unityVersion);
 
-        var start = DateTime.Now;
+        // Preserve legacy static fields for existing consumers.
+        TheMetadata = DefaultContext.Metadata;
+        Binary = DefaultContext.Binary;
+        Il2CppTypeHasNumMods5Bits = DefaultContext.Il2CppTypeHasNumMods5Bits;
 
-        LibLogger.InfoNewline("Initializing Metadata...");
-
-        var meta = TheMetadata = Il2CppMetadata.ReadFrom(metadataBytes, unityVersion);
-
-        Il2CppTypeHasNumMods5Bits = meta.MetadataVersion >= 27.2f;
-
-        LibLogger.InfoNewline($"Initialized Metadata in {(DateTime.Now - start).TotalMilliseconds:F0}ms");
-
-        var bin = Binary = LibCpp2IlBinaryRegistry.CreateAndInit(binaryBytes, meta);
-
-        if (!Settings.DisableGlobalResolving && MetadataVersion < 27)
-        {
-            start = DateTime.Now;
-            LibLogger.Info("Mapping Globals...");
-            LibCpp2IlGlobalMapper.MapGlobalIdentifiers(meta, bin);
-            LibLogger.InfoNewline($"OK ({(DateTime.Now - start).TotalMilliseconds:F0}ms)");
-        }
-
-        if (!Settings.DisableMethodPointerMapping)
-        {
-            start = DateTime.Now;
-            LibLogger.Info("Mapping pointers to Il2CppMethodDefinitions...");
-            var i = 0;
-            foreach (var (method, ptr) in meta.methodDefs.Select(method => (method, ptr: method.MethodPointer)))
-            {
-                if (!MethodsByPtr.ContainsKey(ptr))
-                    MethodsByPtr[ptr] = [];
-
-                MethodsByPtr[ptr].Add(method);
-                i++;
-            }
-
-            LibLogger.InfoNewline($"Processed {i} OK ({(DateTime.Now - start).TotalMilliseconds:F0}ms)");
-        }
-
-        LibCpp2IlReflection.InitCaches();
+        // Keep legacy MethodsByPtr populated for old call sites.
+        MethodsByPtr.Clear();
+        foreach (var kvp in DefaultContext.MethodsByPtr)
+            MethodsByPtr[kvp.Key] = kvp.Value;
 
         return true;
     }
+
+    public static LibCpp2IlContext InitializeAsContext(byte[] binaryBytes, byte[] metadataBytes, UnityVersion unityVersion)
+        => LibCpp2IlContext.Initialize(binaryBytes, metadataBytes, unityVersion);
+
+    public static LibCpp2IlContext LoadFromFileAsContext(string pePath, string metadataPath, UnityVersion unityVersion)
+        => LibCpp2IlContext.LoadFromFile(pePath, metadataPath, unityVersion);
 
     /// <summary>
     /// Initialize the metadata and PE from their respective file locations.
@@ -202,10 +191,18 @@ public static class LibCpp2IlMain
     /// <throws><see cref="System.NotSupportedException"/> if the PE file specifies it is neither for AMD64 or i386 architecture</throws>
     public static bool LoadFromFile(string pePath, string metadataPath, UnityVersion unityVersion)
     {
-        var metadataBytes = File.ReadAllBytes(metadataPath);
-        var peBytes = File.ReadAllBytes(pePath);
+        var ctx = LibCpp2IlContext.LoadFromFile(pePath, metadataPath, unityVersion);
+        DefaultContext = ctx;
 
-        return Initialize(peBytes, metadataBytes, unityVersion);
+        TheMetadata = ctx.Metadata;
+        Binary = ctx.Binary;
+        Il2CppTypeHasNumMods5Bits = ctx.Il2CppTypeHasNumMods5Bits;
+
+        MethodsByPtr.Clear();
+        foreach (var kvp in ctx.MethodsByPtr)
+            MethodsByPtr[kvp.Key] = kvp.Value;
+
+        return true;
     }
 
     /// <summary>

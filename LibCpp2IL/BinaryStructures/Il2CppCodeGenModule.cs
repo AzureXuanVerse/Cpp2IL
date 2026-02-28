@@ -1,3 +1,5 @@
+using System;
+
 namespace LibCpp2IL.BinaryStructures;
 
 public class Il2CppCodeGenModule : ReadableClass
@@ -32,18 +34,36 @@ public class Il2CppCodeGenModule : ReadableClass
 
     private string? _cachedName;
 
+    internal Il2CppBinary? OwningBinary { get; set; }
+
     public string Name
     {
         get
         {
             if (_cachedName == null)
-                _cachedName = LibCpp2IlMain.Binary!.ReadStringToNull(LibCpp2IlMain.Binary.MapVirtualAddressToRaw(moduleName));
+            {
+                var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+                if (binary == null)
+                    throw new InvalidOperationException("No binary context available to resolve Il2CppCodeGenModule.Name");
+
+                _cachedName = binary.ReadStringToNull(binary.MapVirtualAddressToRaw(moduleName));
+            }
 
             return _cachedName!;
         }
     }
 
-    public Il2CppTokenRangePair[] RGCTXRanges => LibCpp2IlMain.Binary!.GetRgctxRangePairsForModule(this);
+    public Il2CppTokenRangePair[] RGCTXRanges
+    {
+        get
+        {
+            var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+            if (binary == null)
+                throw new InvalidOperationException("No binary context available to resolve Il2CppCodeGenModule.RGCTXRanges");
+
+            return binary.GetRgctxRangePairsForModule(this);
+        }
+    }
 
     public override void Read(ClassReadingBinaryReader reader)
     {

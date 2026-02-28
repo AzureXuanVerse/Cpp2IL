@@ -8,16 +8,43 @@ namespace LibCpp2IL.BinaryStructures;
 
 public class Il2CppMethodSpec : ReadableClass
 {
+    // Populated by Il2CppBinary.Init for per-context usage.
+    internal Il2CppBinary? OwningBinary { get; set; }
+    internal Il2CppMetadata? OwningMetadata { get; set; }
+
     public int methodDefinitionIndex;
     public int classIndexIndex;
     public int methodIndexIndex;
 
     public Il2CppMethodDefinition? MethodDefinition 
-        => LibCpp2IlMain.TheMetadata?.GetMethodDefinitionFromIndex(Il2CppVariableWidthIndex<Il2CppMethodDefinition>.MakeTemporaryForFixedWidthUsage(methodDefinitionIndex)); //DynWidth: Il2CppMethodSpec is in-binary, dynamic widths weren't applied here.
+        => (OwningMetadata ?? LibCpp2IlMain.TheMetadata)
+            ?.GetMethodDefinitionFromIndex(Il2CppVariableWidthIndex<Il2CppMethodDefinition>.MakeTemporaryForFixedWidthUsage(methodDefinitionIndex)); //DynWidth: Il2CppMethodSpec is in-binary, dynamic widths weren't applied here.
 
-    public Il2CppGenericInst? GenericClassInst => LibCpp2IlMain.Binary?.GetGenericInst(classIndexIndex);
+    public Il2CppGenericInst? GenericClassInst
+    {
+        get
+        {
+            var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+            if (binary == null) return null;
+            if (classIndexIndex < 0) return null;
+            var inst = binary.GetGenericInst(classIndexIndex);
+            inst.OwningBinary = binary;
+            return inst;
+        }
+    }
 
-    public Il2CppGenericInst? GenericMethodInst => LibCpp2IlMain.Binary?.GetGenericInst(methodIndexIndex);
+    public Il2CppGenericInst? GenericMethodInst
+    {
+        get
+        {
+            var binary = OwningBinary ?? LibCpp2IlMain.Binary;
+            if (binary == null) return null;
+            if (methodIndexIndex < 0) return null;
+            var inst = binary.GetGenericInst(methodIndexIndex);
+            inst.OwningBinary = binary;
+            return inst;
+        }
+    }
 
     public Il2CppTypeReflectionData[] GenericClassParams => classIndexIndex == -1 ? [] : LibCpp2ILUtils.GetGenericTypeParams(GenericClassInst!)!;
 
