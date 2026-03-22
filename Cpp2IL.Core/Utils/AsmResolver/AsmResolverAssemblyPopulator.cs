@@ -91,7 +91,7 @@ public static class AsmResolverAssemblyPopulator
                     CustomAttributeEnumParameter enumParameter => enumParameter.UnderlyingPrimitiveParameter.PrimitiveValue,
                     BaseCustomAttributeTypeParameter type => (object?)type.TypeContext?.ToTypeSignature(parentAssembly.ManifestModule!),
                     CustomAttributeNullParameter => null,
-                    CustomAttributeArrayParameter array => BuildArrayArgument(parentAssembly, array),
+                    CustomAttributeArrayParameter array => BuildArrayArgument(parentAssembly, array).Elements.ToArray(),
                     _ => throw new("Not supported array element type: " + e.GetType().FullName)
                 };
 
@@ -145,6 +145,7 @@ public static class AsmResolverAssemblyPopulator
         {
             return parameter switch
             {
+                CustomAttributePrimitiveParameter primitiveParameter when boxIfNeeded => new(TypeDefinitionsAsmResolver.Object.ToTypeSignature(), new BoxedArgument(GetTypeSigFromAttributeArg(parentAssembly, primitiveParameter), primitiveParameter.PrimitiveValue)),
                 CustomAttributePrimitiveParameter primitiveParameter => new(GetTypeSigFromAttributeArg(parentAssembly, primitiveParameter), primitiveParameter.PrimitiveValue),
                 
                 CustomAttributeEnumParameter enumParameter when boxIfNeeded => new(TypeDefinitionsAsmResolver.Object.ToTypeSignature(), new BoxedArgument(GetTypeSigFromAttributeArg(parentAssembly, enumParameter), enumParameter.UnderlyingPrimitiveParameter.PrimitiveValue)),
