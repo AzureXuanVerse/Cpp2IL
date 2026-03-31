@@ -10,7 +10,7 @@
     <PropertyGroup>
         <Authors>Sam Byass (Samboy063)</Authors>
         <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
-        <Copyright>Copyright © Samboy063 2022-2025</Copyright>
+        <Copyright>Copyright © Samboy063 2022-2026</Copyright>
         <Description>Plugin for Cpp2IL</Description>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Samboy063.$(MSBuildProjectName)</PackageId>
