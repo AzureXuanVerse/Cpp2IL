@@ -5,8 +5,6 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <DebugType>embedded</DebugType>
         <Nullable>enable</Nullable>
-        <OutputPath>..\Cpp2IL\bin\Release\net9.0\Plugins</OutputPath>
-        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     </PropertyGroup>
 
     <ItemGroup>
