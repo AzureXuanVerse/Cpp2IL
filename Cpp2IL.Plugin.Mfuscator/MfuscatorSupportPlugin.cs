@@ -1,9 +1,7 @@
-﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using AssetRipper.Primitives;
 using Cpp2IL.Core.Api;
 using Cpp2IL.Core.Attributes;
-using LibCpp2IL.Logging;
 
 [assembly:RegisterCpp2IlPlugin(typeof(Cpp2IL.Plugin.Mfuscator.MfuscatorSupportPlugin))]
 
@@ -47,7 +45,7 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
         }
     }
     
-    public override string Name => "Mfuscator Support";
+    public override string Name => "Mfuscator Support"; //more like midfuscator amirite
     public override string Description => "Supports loading metadata files which have been mangled by mfuscator.";
     public override void OnLoad()
     {
@@ -480,8 +478,6 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
             { 8, 8 }, //fieldAndParameterDefaultValueData
         };
 
-        const int OriginalHeaderSize = 256;
-
         byte MetadataVersion;
         if (unityVersion.LessThan(2017))
             MetadataVersion = 23;
@@ -512,6 +508,23 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
         else if (MetadataVersion == 24 && unityVersion.LessThan(2019))
             assembliesSectionIndex = 22; //pre-24.2 we have rgctxEntries before assemblies
         
+        var expectedSectionCount = MetadataVersion switch
+        {
+            >= 104 => 32,
+            >= 27 => 31,
+            _ => throw new NotImplementedException("Metadata versions below 27 aren't currently supported (largely because mfuscator itself doesn't support these versions)")
+        };
+        var bytesPerSectionHeaderField = MetadataVersion switch
+        {
+            >= 38 => 12,
+            _ => 8
+        };
+        
+        if(bytesPerSectionHeaderField == 12)
+            throw new NotImplementedException("Metadata versions with 12 bytes per section header field aren't currently supported");
+        
+        var originalHeaderSize = 8 + expectedSectionCount * bytesPerSectionHeaderField; //magic + version + 8 bytes per section header field
+        
         Logger.InfoNewline($"Mfuscator header decrypted successfully. Header length: {headerLength} bytes. String literals XOR key: 0x{stringLiteralsXorKey:X2}. String literals use {(stringLiteralsIsPlus ? "plus" : "minus")} rotation. Will rebuild as version {MetadataVersion} metadata with assemblies section at index {assembliesSectionIndex}.");
         
         Logger.VerboseNewline("Decrypted header: " + string.Join("", decryptedHeader.Select(b => b.ToString("X2"))));
@@ -520,7 +533,7 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
         {
             Logger.VerboseNewline($"Trying metadata length 0x{metadataLength:X4}");
             
-            var paths = FindPathsThroughMetadata(headerWords, headerLength, metadataLength, out var bestDeadEnds, maxResults: 65536, debugBestN: 0, expectedSectionCount: 31, alignBefore: sectionAlignments, originalHeaderSize: OriginalHeaderSize);
+            var paths = FindPathsThroughMetadata(headerWords, headerLength, metadataLength, out var bestDeadEnds, maxResults: 65536, debugBestN: 0, expectedSectionCount: expectedSectionCount, alignBefore: sectionAlignments, originalHeaderSize: originalHeaderSize);
 
             if (paths.Count > 0)
             {
@@ -534,14 +547,23 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
                 var distinct = actualRanges.Distinct(new SectionRangeComparer()).ToArray();
                 
                 Logger.VerboseNewline($"These collapse to {distinct.Length} distinct actual section layouts.");
-                
-                //We'll just accept any valid layout here, if there is more than one distinct layout it's likely they only differ in the irrelevant sections at the end of the file which cpp2il ignores
-                var acceptedLayout = distinct[0];
-                
-                Logger.VerboseNewline($"Accepted section layout: " + string.Join(", ", acceptedLayout.Select(range => $"({range.Item1:X4}-{range.Item2:X4})")));
-                
-                Logger.InfoNewline("Returning decrypted metadata now...");
-                return RebuildMetadata(originalBytes, acceptedLayout.ToList(), stringLiteralsXorKey, stringLiteralsIsPlus, offsetDelta: OriginalHeaderSize - headerLength, MetadataVersion, assembliesSectionIndex);
+
+                foreach (var acceptedLayout in distinct)
+                {
+
+                    Logger.VerboseNewline($"Trying section layout: " + string.Join(", ", acceptedLayout.Select(range => $"({range.Item1:X4}-{range.Item2:X4})")));
+
+                    try
+                    {
+                        var ret = RebuildMetadata(originalBytes, acceptedLayout.ToList(), stringLiteralsXorKey, stringLiteralsIsPlus, offsetDelta: originalHeaderSize - headerLength, MetadataVersion, assembliesSectionIndex);
+                        Logger.InfoNewline("Returning decrypted metadata now...");
+                        return ret;
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                    }
+                }
             }
 
             metadataLength -= 4;
