@@ -571,7 +571,6 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
             }
 
             metadataLength -= 4;
-            break;
         }
         
         return null;
