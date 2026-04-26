@@ -51,6 +51,17 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
     {
         RegisterMetadataFixupFunc(TryFixupMfuscatorMetadata);
     }
+    
+    private static void CyclicXorHeader(ReadOnlySpan<byte> data, Span<byte> output, byte xorKey, bool isPlus, int offset = 0)
+    {
+        for (var i = 0; i < data.Length; i++)
+        {
+            var keyByte = (byte) ((isPlus 
+                ? (xorKey + offset + i) 
+                : (xorKey - (offset + i))) & 0xFF);
+            output[i] = (byte) (data[i] ^ keyByte);
+        }
+    }
 
     private static void CyclicXor(ReadOnlySpan<byte> data, Span<byte> output, byte xorKey, bool isPlus, int offset = 0)
     {
@@ -90,9 +101,11 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
         throw new Exception("Failed to derive XOR key");
     }
 
-    private static byte[] DecryptHeader(Span<byte> encryptedHeader, out byte stringLiteralsXorKey, out bool stringLiteralsIsPlus)
+    private byte[] DecryptHeader(Span<byte> encryptedHeader, out byte stringLiteralsXorKey, out bool stringLiteralsIsPlus)
     {
         var xorKey = DeriveXorKey(encryptedHeader, out var isPlus);
+        
+        Logger.VerboseNewline($"Derived header XOR key: 0x{xorKey:X2}. Header fields use {(isPlus ? "plus" : "minus")} rotation.");
 
         //Header size isn't actually known, we just pass the first 480 bytes in
         //So let's work it out
@@ -102,7 +115,7 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
         while (headerSize < MaxHeaderSize)
         {
             var encryptedWord = encryptedHeader[headerSize..(headerSize + 4)];
-            CyclicXor(encryptedWord, decryptedWord, xorKey, isPlus, headerSize);
+            CyclicXorHeader(encryptedWord, decryptedWord, xorKey, isPlus, headerSize);
 
             headerSize += 4;
 
@@ -138,9 +151,10 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
                 headerSize -= 4; //the last 4 bytes we read were actually the start of the string literal data, so remove them from the header size
                 
                 var decryptedHeader = new byte[headerSize];
-                CyclicXor(encryptedHeader[..headerSize], decryptedHeader, xorKey, isPlus);
+                CyclicXorHeader(encryptedHeader[..headerSize], decryptedHeader, xorKey, isPlus);
                 stringLiteralsXorKey = encryptedWord[0];
-                stringLiteralsIsPlus = isPlus;
+                var nextEncryptedWord = encryptedHeader[(headerSize + 4)..(headerSize + 8)];
+                stringLiteralsIsPlus = nextEncryptedWord[0] == encryptedWord[0] + 4;
                 return decryptedHeader;
             }
         }
@@ -336,6 +350,25 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
                 if (!stringLiteralDataIsPlus && !stringLiteralDataIsMinus)
                     throw new Exception("Failed to determine string literal data XOR direction");
 
+                if (stringLiteralDataIsPlus)
+                {
+                    //check for underflow resulting in wrong initial key
+                    var encryptedFirstWord = encryptedMetadata.AsSpan(stringLiteralDataStart, 4);
+                    var decryptedFirstWord = new byte[4];
+                    CyclicXor(
+                        encryptedFirstWord,
+                        decryptedFirstWord,
+                        sectionsXorKeyAddend,
+                        true,
+                        stringLiteralDataKeyComponent
+                    );
+                    if (decryptedFirstWord[0] != 0)
+                    {
+                        stringLiteralDataIsPlus = false;
+                        sectionsXorKeyAddend = (byte)((0 - stringLiteralsXorKey - stringLiteralsKeyComponent) & 0xFF);
+                    }
+                }
+
                 //And decrypt it
                 var decryptedLiteralData = decryptedSectionBytes[StringLiteralsDataSectionIndex] = new byte[stringLiteralDataSize];
                 CyclicXor(
@@ -355,6 +388,7 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
                 var foundZeroBytes = 0;
                 foreach (var testIsPlus in new bool[] { true, false })
                 {
+                    foundZeroBytes = 0;
                     stringsIsPlus = testIsPlus;
                     for (var i = 0; i < 32; i++)
                     {
@@ -371,6 +405,9 @@ public class MfuscatorSupportPlugin : Cpp2IlPlugin
                                 break; //we've found the first two null terminators, which is enough to be confident we've got the right key direction
                         }
                     }
+
+                    if (foundZeroBytes == 2)
+                        break;
                 }
 
                 if (foundZeroBytes != 2)
