@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using Cpp2IL.Core.Analysis;
 using Cpp2IL.Core.Graphs;
-using Cpp2IL.Core.Graphs.Processors;
 using Cpp2IL.Core.ISIL;
 using Cpp2IL.Core.Logging;
 using Cpp2IL.Core.Utils;
@@ -46,14 +46,35 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
     /// <summary>
     /// The first-stage-analyzed Instruction-Set-Independent Language Instructions.
     /// </summary>
-    public List<InstructionSetIndependentInstruction>? ConvertedIsil;
+    public List<Instruction>? ConvertedIsil;
+
+    /// <summary>
+    /// All ISIL local variables.
+    /// </summary>
+    public List<LocalVariable> Locals = [];
+
+    /// <summary>
+    /// Operands used as parameters.
+    /// </summary>
+    public List<object> ParameterOperands = [];
 
     /// <summary>
     /// The control flow graph for this method, if one is built.
     /// </summary>
     public ISILControlFlowGraph? ControlFlowGraph;
 
+    /// <summary>
+    /// Dominance info for the control flow graph.
+    /// </summary>
+    public DominatorInfo? DominatorInfo;
+
+    public List<string> AnalysisWarnings = [];
+
+    private const int MaxMethodSizeBytes = 18000; // 18KB
+
     public List<ParameterAnalysisContext> Parameters = [];
+
+    public List<LocalVariable> ParameterLocals = [];
 
     /// <summary>
     /// Does this method return void?
@@ -248,12 +269,6 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
         return false;
     }
 
-    private static readonly List<IBlockProcessor> blockProcessors =
-    [
-        new MetadataProcessor(),
-        new CallProcessor()
-    ];
-
     public MethodAnalysisContext(Il2CppMethodDefinition? definition, TypeAnalysisContext parent) : base(definition?.token ?? 0, parent.AppContext)
     {
         DeclaringType = parent;
@@ -306,6 +321,13 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
     [MemberNotNull(nameof(ConvertedIsil))]
     public void Analyze()
     {
+        if (RawBytes.Length > MaxMethodSizeBytes)
+        {
+            Logger.WarnNewline($"Method {FullName} is too big ({RawBytes.Length} bytes), skipping analysis.");
+            ConvertedIsil = [];
+            return;
+        }
+
         if (ConvertedIsil != null)
             return;
 
@@ -316,27 +338,38 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
         }
 
         ConvertedIsil = AppContext.InstructionSet.GetIsilFromMethod(this);
+        ParameterOperands = AppContext.InstructionSet.GetParameterOperandsFromMethod(this);
 
         if (ConvertedIsil.Count == 0)
             return; //Nothing to do, empty function
 
-        ControlFlowGraph = new ISILControlFlowGraph();
-        ControlFlowGraph.Build(ConvertedIsil);
+        ControlFlowGraph = new ISILControlFlowGraph(ConvertedIsil);
+        DominatorInfo = new DominatorInfo(ControlFlowGraph);
 
-        // Post step to convert metadata usage. Ldstr Opcodes etc.
-        foreach (var block in ControlFlowGraph.Blocks)
-        {
-            foreach (var converter in blockProcessors)
-            {
-                converter.Process(this, block);
-            }
-        }
+        // Indirect jumps/calls should probably be resolved here before stack analysis
+
+        StackAnalyzer.Analyze(this);
+
+        // Create locals
+        SsaForm.Build(this);
+        LocalVariables.CreateAll(this);
+        SsaForm.Remove(this);
+
+        MetadataResolver.ResolveAll(this);
+        Simplifier.Simplify(this);
+
+        // Propagate types and clean up locals
+        LocalVariables.PropagateTypes(this);
+        LocalVariables.RemoveUnused(this);
     }
+
+    public void AddWarning(string warning) => AnalysisWarnings.Add(warning);
 
     public void ReleaseAnalysisData()
     {
         ConvertedIsil = null;
         ControlFlowGraph = null;
+        DominatorInfo = null;
     }
 
     public ConcreteGenericMethodAnalysisContext MakeGenericInstanceMethod(params IEnumerable<TypeAnalysisContext> methodGenericParameters)

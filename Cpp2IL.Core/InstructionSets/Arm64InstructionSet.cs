@@ -31,7 +31,12 @@ public class Arm64InstructionSet : Cpp2IlInstructionSet
         return instructions.SelectMany(i => i.Bytes).ToArray();
     }
 
-    public override List<InstructionSetIndependentInstruction> GetIsilFromMethod(MethodAnalysisContext context)
+    public override List<Instruction> GetIsilFromMethod(MethodAnalysisContext context)
+    {
+        return [];
+    }
+
+    public override List<object> GetParameterOperandsFromMethod(MethodAnalysisContext context)
     {
         return [];
     }

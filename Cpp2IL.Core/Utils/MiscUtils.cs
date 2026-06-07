@@ -239,7 +239,9 @@ public static class MiscUtils
         "install.exe",
         "launch.exe",
         "MelonLoader.Installer.exe",
-        "crashpad_handler.exe"
+        "crashpad_handler.exe",
+        "EOSBootstrapper.exe",
+        "start_protected_game.exe"
     ];
 
     public static string AnalyzeStackTracePointers(ulong[] pointers)
@@ -288,5 +290,38 @@ public static class MiscUtils
         InvalidPathChars.ForEach(c => input = input.Replace(c, '_'));
 
         return InvalidPathElements.Contains(input) ? $"__invalidwin32name_{input}__" : input;
+    }
+
+    public static string ToCollapsedString(this Exception ex)
+    {
+        if (ex == null) return string.Empty;
+
+        var s = ex.ToString();
+        var lines = s.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+
+        var result = new List<string>();
+        var repeatCount = 0;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (i > 0 && lines[i] == lines[i - 1])
+            {
+                repeatCount++;
+            }
+            else
+            {
+                if (repeatCount > 0)
+                {
+                    result.Add($"   ... repeated {repeatCount} times ...");
+                    repeatCount = 0;
+                }
+                result.Add(lines[i]);
+            }
+        }
+
+        if (repeatCount > 0)
+            result.Add($"   ... repeated {repeatCount} times ...");
+
+        return string.Join(Environment.NewLine, result);
     }
 }
