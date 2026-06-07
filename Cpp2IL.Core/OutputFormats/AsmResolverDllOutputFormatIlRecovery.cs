@@ -59,16 +59,23 @@ public class AsmResolverDllOutputFormatIlRecovery : AsmResolverDllOutputFormat
         }
         catch (Exception e)
         {
-            Logger.ErrorNewline($"Decompiling {methodContext.FullName} failed: {e.ToCollapsedString()}");
+            // Known analysis limitations (DecompilerException) get a one-line warning; anything
+            // else is an unexpected bug and keeps its (collapsed) stack trace.
+            var detail = e is DecompilerException ? e.Message : e.ToCollapsedString();
 
-            // throw new Exception(error);
+            if (e is DecompilerException)
+                Logger.WarnNewline($"Skipping {methodContext.FullName}: {e.Message}");
+            else
+                Logger.ErrorNewline($"Decompiling {methodContext.FullName} failed: {detail}");
+
+            // throw new Exception(detail);
             var factory = module.CorLibTypeFactory;
             var exceptionCtor = factory.CorLibScope
                 .CreateTypeReference("System", "Exception")
                 .CreateMemberReference(".ctor", MethodSignature.CreateInstance(factory.Void, [factory.String]))
                 .ImportWith(importer);
 
-            instructions.Add(CilOpCodes.Ldstr, e.ToCollapsedString());
+            instructions.Add(CilOpCodes.Ldstr, detail);
             instructions.Add(CilOpCodes.Newobj, exceptionCtor);
             instructions.Add(CilOpCodes.Throw);
         }

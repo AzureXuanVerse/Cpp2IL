@@ -35,8 +35,9 @@ public class StackAnalyzer
 
         analyzer.TraverseGraph(graph.EntryBlock);
 
-        var outDelta = analyzer._outGoingState[graph.ExitBlock];
-        if (outDelta.Size != 0)
+        // The exit block has no outgoing state if it was never reached (e.g. every path loops or
+        // throws). That's fine - just skip the end-of-method stack balance check in that case.
+        if (analyzer._outGoingState.TryGetValue(graph.ExitBlock, out var outDelta) && outDelta.Size != 0)
         {
             var outText = outDelta.Size < 0 ? "-" + (-outDelta.Size).ToString("X") : outDelta.Size.ToString("X");
             method.AddWarning($"Method ends with non empty stack ({outText}), the output could be wrong!");
