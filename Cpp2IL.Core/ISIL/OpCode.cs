@@ -91,5 +91,14 @@ public enum OpCode
     CheckGreater,
 
     /// <summary>Moves 1 into op 1, if op 2 is less than op 3</summary>
-    CheckLess
+    CheckLess,
+
+    /// <summary>Moves 1 into op 1, if op 2 and op 3 are not equal</summary>
+    CheckNotEqual,
+
+    /// <summary>Moves 1 into op 1, if op 2 is greater than or equal to op 3</summary>
+    CheckGreaterOrEqual,
+
+    /// <summary>Moves 1 into op 1, if op 2 is less than or equal to op 3</summary>
+    CheckLessOrEqual
 }

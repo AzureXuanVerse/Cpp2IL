@@ -357,8 +357,10 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
         SsaForm.Build(this);
         LocalVariables.CreateAll(this);
 
-        // Eliminate dead computations (e.g. the unused flags emitted for every comparison) while
-        // still in SSA form, where a zero use count proves a definition dead.
+        // Fold the explicit per-comparison flag arithmetic back into single relational comparisons,
+        // then eliminate the now-dead flag computations. Both run in SSA form, where each
+        // flag/temporary has a single, version-stable definition.
+        FlagConditionRecovery.Run(this);
         DeadCodeEliminator.Run(this);
 
         SsaForm.Remove(this);

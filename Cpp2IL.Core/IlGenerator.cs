@@ -260,6 +260,9 @@ public static class IlGenerator
             case OpCode.CheckEqual:
             case OpCode.CheckGreater:
             case OpCode.CheckLess:
+            case OpCode.CheckNotEqual:
+            case OpCode.CheckGreaterOrEqual:
+            case OpCode.CheckLessOrEqual:
 
             case OpCode.Add:
             case OpCode.Subtract:
@@ -280,6 +283,25 @@ public static class IlGenerator
                     case OpCode.CheckEqual: instructions.Add(CilOpCodes.Ceq); break;
                     case OpCode.CheckGreater: instructions.Add(CilOpCodes.Cgt); break;
                     case OpCode.CheckLess: instructions.Add(CilOpCodes.Clt); break;
+
+                    // a != b  ==  (a == b) == 0
+                    case OpCode.CheckNotEqual:
+                        instructions.Add(CilOpCodes.Ceq);
+                        instructions.Add(CilOpCodes.Ldc_I4_0);
+                        instructions.Add(CilOpCodes.Ceq);
+                        break;
+                    // a >= b  ==  !(a < b)
+                    case OpCode.CheckGreaterOrEqual:
+                        instructions.Add(CilOpCodes.Clt);
+                        instructions.Add(CilOpCodes.Ldc_I4_0);
+                        instructions.Add(CilOpCodes.Ceq);
+                        break;
+                    // a <= b  ==  !(a > b)
+                    case OpCode.CheckLessOrEqual:
+                        instructions.Add(CilOpCodes.Cgt);
+                        instructions.Add(CilOpCodes.Ldc_I4_0);
+                        instructions.Add(CilOpCodes.Ceq);
+                        break;
 
                     case OpCode.Add: instructions.Add(CilOpCodes.Add); break;
                     case OpCode.Subtract: instructions.Add(CilOpCodes.Sub); break;

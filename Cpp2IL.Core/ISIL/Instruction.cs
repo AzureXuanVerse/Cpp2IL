@@ -56,6 +56,9 @@ public class Instruction(int index, OpCode opcode, params object[] operands)
             case OpCode.CheckEqual:
             case OpCode.CheckGreater:
             case OpCode.CheckLess:
+            case OpCode.CheckNotEqual:
+            case OpCode.CheckGreaterOrEqual:
+            case OpCode.CheckLessOrEqual:
                 if (newDestination != null)
                     Operands[0] = newDestination;
                 return IsConstantValue(Operands[0]) ? null : Operands[0];
@@ -80,6 +83,7 @@ public class Instruction(int index, OpCode opcode, params object[] operands)
             OpCode.Call => Operands.Skip(2).ToList(),
             OpCode.CallVoid or OpCode.Phi => Operands.Skip(1).ToList(),
             OpCode.CheckEqual or OpCode.CheckGreater or OpCode.CheckLess
+                or OpCode.CheckNotEqual or OpCode.CheckGreaterOrEqual or OpCode.CheckLessOrEqual
                 => [Operands[1], Operands[2]],
 
             _ => []

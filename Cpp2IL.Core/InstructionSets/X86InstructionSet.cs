@@ -438,7 +438,7 @@ public class X86InstructionSet : Cpp2IlInstructionSet
                         if (possibleMethods[0].IsVoid)
                             call = Add(instruction.IP, ISIL.OpCode.CallVoid, target);
                         else
-                            call = Add(instruction.IP, ISIL.OpCode.Call, target, new ISIL.Register(null, "eax") /* return value */);
+                            call = Add(instruction.IP, ISIL.OpCode.Call, target, new ISIL.Register(null, "rax") /* return value */);
 
                         call.Operands.AddRange(X64CallingConventionResolver.ResolveForManaged(possibleMethods[0]));
                     }
@@ -467,7 +467,7 @@ public class X86InstructionSet : Cpp2IlInstructionSet
                         if (ctx.IsVoid)
                             call = Add(instruction.IP, ISIL.OpCode.CallVoid, target);
                         else
-                            call = Add(instruction.IP, ISIL.OpCode.Call, target, new ISIL.Register(null, "eax") /* return value */);
+                            call = Add(instruction.IP, ISIL.OpCode.Call, target, new ISIL.Register(null, "rax") /* return value */);
 
                         call.Operands.AddRange(X64CallingConventionResolver.ResolveForManaged(ctx));
                     }
@@ -478,7 +478,7 @@ public class X86InstructionSet : Cpp2IlInstructionSet
                     // This will need to be rewritten if we ever stumble upon an unmanaged method that accepts more than 4 parameters.
                     // These can be converted to dedicated ISIL instructions for specific API functions at a later stage. (by a post-processing step)
 
-                    var call = Add(instruction.IP, ISIL.OpCode.Call, target, new ISIL.Register(null, "eax") /* return value */);
+                    var call = Add(instruction.IP, ISIL.OpCode.Call, target, new ISIL.Register(null, "rax") /* return value */);
                     call.Operands.AddRange(X64CallingConventionResolver.ResolveForUnmanaged(context.AppContext, target));
                 }
 
