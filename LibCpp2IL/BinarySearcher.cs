@@ -305,7 +305,7 @@ public class BinarySearcher(Il2CppBinary binary, Il2CppMetadata metadata, int me
     public ulong FindMetadataRegistrationPre24_5()
     {
         //We're looking for TypeDefinitionsSizesCount, which is the 4th-to-last field
-        var sizeOfMr = (ulong)Il2CppMetadataRegistration.GetStructSize(binary.is32Bit);
+        var sizeOfMr = (ulong)Il2CppMetadataRegistration.GetStructSize(binary.is32Bit, metadata.MetadataVersion);
         var ptrSize = binary.is32Bit ? 4ul : 8ul;
 
         var bytesToSubtract = sizeOfMr - ptrSize * 4;
@@ -335,7 +335,7 @@ public class BinarySearcher(Il2CppBinary binary, Il2CppMetadata metadata, int me
     public ulong FindMetadataRegistrationPost24_5()
     {
         var ptrSize = binary.is32Bit ? 4ul : 8ul;
-        var sizeOfMr = (uint)Il2CppMetadataRegistration.GetStructSize(binary.is32Bit);
+        var sizeOfMr = (uint)Il2CppMetadataRegistration.GetStructSize(binary.is32Bit, metadata.MetadataVersion);
 
         LibLogger.VerboseNewline($"\t\t\tLooking for the number of type definitions, 0x{typeDefinitionsCount:X}");
         var ptrsToNumberOfTypes = FindAllMappedWords((ulong)typeDefinitionsCount).ToList();

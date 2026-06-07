@@ -144,6 +144,19 @@ public class Il2CppMetadata : ClassReadingBinaryReader
                 //v31 WITHOUT changes in codereg 
                 actualVersion = 31;
         }
+        else if (version == 106)
+        {
+            //6.5.0a6 => v106
+            //  - changes GenericParameterIndex, FieldIndex, DefaultValueDataIndex to variable size
+            //  - changes Il2CppGenericContainer type_argc int32 => uint16, is_method int32 => uint8
+            //6.6.0a6 => 106.1
+            //  - adds 2 new fields to Il2CppMetadataRegistration
+            //  - removes the first value of MetadataUsageType
+            if(unityVersion.GreaterThanOrEquals(6000, 6, 0, UnityVersionType.Alpha, 6))
+                actualVersion = 106.1f;
+            else
+                actualVersion = 106;
+        }
         else
         {
             //6000.3 and 6000.5 alphas made a bunch of quick-succession version changes:
@@ -165,9 +178,6 @@ public class Il2CppMetadata : ClassReadingBinaryReader
             //6.5.0a5 => v105
             //  - changes MethodIndex to variable size.
             //  - brings the Il2CppClass changes from v38 to v10x.
-            //6.5.0a6 => v106
-            //  - changes GenericParameterIndex, FieldIndex, DefaultValueDataIndex to variable size
-            //  - changes Il2CppGenericContainer type_argc int32 => uint16, is_method int32 => uint8
             actualVersion = version;
         }
 

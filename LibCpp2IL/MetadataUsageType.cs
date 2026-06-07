@@ -2,7 +2,7 @@
 
 public enum MetadataUsageType : uint
 {
-    TypeInfo = 1,
+    TypeInfo = 1, //REMOVED in v106.1
     Type = 2,
     MethodDef = 3,
     FieldInfo = 4,

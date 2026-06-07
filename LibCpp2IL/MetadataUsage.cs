@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using LibCpp2IL.BinaryStructures;
 using LibCpp2IL.Metadata;
 using LibCpp2IL.Reflection;
@@ -158,6 +158,9 @@ public class MetadataUsage(MetadataUsageType type, ulong offset, uint value, Lib
     {
         var encodedType = encoded & 0xE000_0000;
         var type = (MetadataUsageType)(encodedType >> 29);
+        if (context.Metadata.MetadataVersion > 106.1f)
+            type += 1; //TypeInfo removed in v106.1
+        
         if (type <= MetadataUsageType.MethodRef && type >= MetadataUsageType.TypeInfo)
         {
             var index = (uint)(encoded & 0x1FFF_FFFF);
