@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using AsmResolver.DotNet;
+using AsmResolver.DotNet.Signatures;
 using AsmResolver.PE.DotNet.Cil;
 using AssetRipper.CIL;
 using Cpp2IL.Core.Extensions;
@@ -20,13 +21,8 @@ public class AsmResolverDllOutputFormatIlRecovery : AsmResolverDllOutputFormat
 
     public override string OutputFormatName => "DLL files with IL Recovery";
 
-    private MethodDefinition? _exceptionConstructor;
-
     protected override void FillMethodBody(MethodDefinition methodDefinition, MethodAnalysisContext methodContext)
     {
-        if (_exceptionConstructor == null)
-            FindExceptionConstructor(methodDefinition);
-
         var module = methodDefinition.DeclaringModule!;
         var moduleName = module.Name!.ToString();
         var shouldSkip = moduleName.StartsWith("UnityEngine.") || moduleName.StartsWith("Unity.") ||
@@ -66,24 +62,18 @@ public class AsmResolverDllOutputFormatIlRecovery : AsmResolverDllOutputFormat
             Logger.ErrorNewline($"Decompiling {methodContext.FullName} failed: {e.ToCollapsedString()}");
 
             // throw new Exception(error);
+            var factory = module.CorLibTypeFactory;
+            var exceptionCtor = factory.CorLibScope
+                .CreateTypeReference("System", "Exception")
+                .CreateMemberReference(".ctor", MethodSignature.CreateInstance(factory.Void, [factory.String]))
+                .ImportWith(importer);
+
             instructions.Add(CilOpCodes.Ldstr, e.ToCollapsedString());
-            instructions.Add(CilOpCodes.Newobj, importer.ImportMethod(_exceptionConstructor!));
+            instructions.Add(CilOpCodes.Newobj, exceptionCtor);
             instructions.Add(CilOpCodes.Throw);
         }
 
         methodContext.ReleaseAnalysisData();
-    }
-
-    private void FindExceptionConstructor(MethodDefinition method)
-    {
-        var module = method.DeclaringModule!;
-        var mscorlibReference = module.AssemblyReferences.First(a => a.Name == "mscorlib");
-        module.RuntimeContext.AssemblyResolver.Resolve(mscorlibReference, module, out var mscorlibAssembly);
-        var mscorlib = mscorlibAssembly!.Modules[0];
-
-        var exception = mscorlib.TopLevelTypes.First(t => t.FullName == "System.Exception");
-        _exceptionConstructor = exception.Methods.First(m =>
-            m.Name == ".ctor" && m.Parameters is [{ ParameterType.FullName: "System.String" }]);
     }
 
     public static void WriteControlFlowGraph(MethodAnalysisContext method, string outputPath)

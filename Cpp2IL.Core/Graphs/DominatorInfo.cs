@@ -155,72 +155,42 @@ public class DominatorInfo
     private void CalculateImmediatePostDominators(ISILControlFlowGraph graph)
     {
         foreach (var block in graph.Blocks)
-        {
-            if (block.Successors.Count == 0 || block == graph.ExitBlock)
-            {
-                ImmediatePostDominators[block] = null;
-                continue;
-            }
-
-            foreach (var candidate in PostDominators[block])
-            {
-                if (candidate == block)
-                    continue;
-
-                if (PostDominators[block].Count == 2)
-                {
-                    ImmediatePostDominators[block] = candidate;
-                    break;
-                }
-
-                foreach (var otherCandidate in PostDominators[block])
-                {
-                    if (candidate == otherCandidate || candidate == block)
-                        continue;
-
-                    if (!PostDominators[otherCandidate].Contains(candidate))
-                    {
-                        ImmediatePostDominators[block] = candidate;
-                        break;
-                    }
-                }
-            }
-        }
+            ImmediatePostDominators[block] = ClosestStrictDominator(block, PostDominators);
     }
 
     private void CalculateImmediateDominators(ISILControlFlowGraph graph)
     {
         foreach (var block in graph.Blocks)
-            ImmediateDominators[block] = null;
+            ImmediateDominators[block] = ClosestStrictDominator(block, Dominators);
+    }
 
-        foreach (var block in graph.Blocks)
+    /// <summary>
+    /// Returns the (post-)dominator of <paramref name="block"/> closest to it, i.e. its immediate
+    /// (post-)dominator. The strict (post-)dominators of a block form a chain under the domination
+    /// relation, so the closest one is simply the one with the largest (post-)dominator set.
+    /// Returns null for the root (entry/exit) or any block with no strict (post-)dominators.
+    /// </summary>
+    private static Block? ClosestStrictDominator(Block block, Dictionary<Block, HashSet<Block>> dominators)
+    {
+        if (!dominators.TryGetValue(block, out var doms))
+            return null;
+
+        Block? closest = null;
+        var closestCount = -1;
+
+        foreach (var candidate in doms)
         {
-            if (block.Predecessors.Count == 0 || block == graph.EntryBlock)
+            if (candidate == block)
                 continue;
 
-            foreach (var candidate in Dominators[block])
+            var count = dominators[candidate].Count;
+            if (count > closestCount)
             {
-                if (candidate == block)
-                    continue;
-
-                if (Dominators[block].Count == 2)
-                {
-                    ImmediateDominators[block] = candidate;
-                    break;
-                }
-
-                foreach (var otherCandidate in Dominators[block])
-                {
-                    if (candidate == otherCandidate || candidate == block)
-                        continue;
-
-                    if (!Dominators[otherCandidate].Contains(candidate))
-                    {
-                        ImmediateDominators[block] = candidate;
-                        break;
-                    }
-                }
+                closestCount = count;
+                closest = candidate;
             }
         }
+
+        return closest;
     }
 }

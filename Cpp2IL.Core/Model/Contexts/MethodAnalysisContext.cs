@@ -344,11 +344,14 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
             return; //Nothing to do, empty function
 
         ControlFlowGraph = new ISILControlFlowGraph(ConvertedIsil);
-        DominatorInfo = new DominatorInfo(ControlFlowGraph);
 
         // Indirect jumps/calls should probably be resolved here before stack analysis
 
         StackAnalyzer.Analyze(this);
+
+        // Dominator info must be computed after stack analysis, which removes unreachable/empty
+        // blocks and would otherwise leave the dominator tree out of sync with the graph SSA sees.
+        DominatorInfo = new DominatorInfo(ControlFlowGraph);
 
         // Create locals
         SsaForm.Build(this);

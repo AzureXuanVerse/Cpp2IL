@@ -119,7 +119,16 @@ public class ISILControlFlowGraph
             if (block == EntryBlock || block == ExitBlock)
                 continue;
 
+            // Fully detach the block so no remaining block keeps a dangling reference to it.
+            // (A reachable block can have an unreachable predecessor; leaving that reference
+            // behind makes later passes such as dominator computation throw.)
+            foreach (var successor in block.Successors)
+                successor.Predecessors.Remove(block);
+            foreach (var predecessor in block.Predecessors)
+                predecessor.Successors.Remove(block);
+
             block.Successors.Clear();
+            block.Predecessors.Clear();
             Blocks.Remove(block);
         }
     }

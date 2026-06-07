@@ -6,80 +6,93 @@ using Cpp2IL.Core.Model.Contexts;
 
 namespace Cpp2IL.Core.Analysis;
 
+/// <summary>
+/// Converts the control flow graph into and out of minimal SSA form, following the standard
+/// Cytron et al. algorithm: phi functions are inserted at the iterated dominance frontiers of
+/// each variable's definition sites, and the registers are then renamed (versioned) via a
+/// pre-order walk of the dominator tree.
+///
+/// Variables are <see cref="Register"/>s, identified by <see cref="Register.Number"/>. Version
+/// -1 represents the value on entry to the method (parameters / live-in values); real
+/// definitions are numbered from 1 upwards.
+/// </summary>
 public class SsaForm
 {
-    private Dictionary<int, Stack<Register>> _versions = new();
-    private Dictionary<int, int> _versionCount = new();
-    private Dictionary<Block, Dictionary<int, Register>> _blockOutVersions = new();
+    // Per-register version stack (top = current version in the current dominator-tree path).
+    private readonly Dictionary<int, Stack<Register>> _stacks = new();
+    // Per-register last-assigned version number.
+    private readonly Dictionary<int, int> _counter = new();
+    // An unversioned representative register per number, used to build phi nodes and the entry value.
+    private readonly Dictionary<int, Register> _repr = new();
 
     public static void Build(MethodAnalysisContext method)
+        => Build(method.ControlFlowGraph!, method.DominatorInfo!);
+
+    public static void Build(ISILControlFlowGraph graph, DominatorInfo dominatorInfo)
     {
+        graph.BuildUseDefLists();
+
         var ssa = new SsaForm();
-
-        method.ControlFlowGraph!.BuildUseDefLists();
-
-        ssa._versions.Clear();
-        ssa._versionCount.Clear();
-        ssa._blockOutVersions.Clear();
-
-        var graph = method.ControlFlowGraph!;
-        var dominatorInfo = method.DominatorInfo!;
-
-        ssa.ProcessBlock(graph.EntryBlock, dominatorInfo.DominanceTree);
-        ssa.InsertAllPhiFunctions(graph, dominatorInfo, method.ParameterOperands);
+        ssa.CollectRegisters(graph);
+        ssa.InsertPhiFunctions(graph, dominatorInfo);
+        ssa.Rename(graph.EntryBlock, dominatorInfo);
     }
 
-    private void InsertAllPhiFunctions(ISILControlFlowGraph graph, DominatorInfo dominance, List<object> parameters)
+    private void CollectRegisters(ISILControlFlowGraph graph)
     {
-        // Check where registers are defined
+        foreach (var instruction in graph.Instructions)
+            foreach (var register in EnumerateRegisters(instruction))
+                if (!_repr.ContainsKey(register.Number))
+                    _repr[register.Number] = register.Copy();
+    }
+
+    private static IEnumerable<Register> EnumerateRegisters(Instruction instruction)
+    {
+        foreach (var operand in instruction.Operands)
+        {
+            if (operand is Register register)
+                yield return register;
+            else if (operand is MemoryOperand memory)
+            {
+                if (memory.Base is Register baseRegister)
+                    yield return baseRegister;
+                if (memory.Index is Register indexRegister)
+                    yield return indexRegister;
+            }
+        }
+    }
+
+    private void InsertPhiFunctions(ISILControlFlowGraph graph, DominatorInfo dominance)
+    {
         var defSites = GetDefinitionSites(graph);
 
-        // For each register
         foreach (var entry in defSites)
         {
             var regNumber = entry.Key;
+            var sites = entry.Value;
 
-            var workList = new Queue<Block>(entry.Value);
-            var phiInserted = new HashSet<Block>();
+            var workList = new Queue<Block>(sites);
+            var onWorkList = new HashSet<Block>(sites);
+            var hasPhi = new HashSet<Block>();
 
             while (workList.Count > 0)
             {
                 var block = workList.Dequeue();
 
-                // For each dominance frontier block of the current block
-                if (!dominance.DominanceFrontier.TryGetValue(block, out var dfBlocks))
+                if (!dominance.DominanceFrontier.TryGetValue(block, out var frontier))
                     continue;
 
-                foreach (var dfBlock in dfBlocks)
+                foreach (var frontierBlock in frontier)
                 {
-                    // Already visited
-                    if (phiInserted.Contains(dfBlock)) continue;
+                    // Only one phi per (block, register).
+                    if (!hasPhi.Add(frontierBlock))
+                        continue;
 
-                    // For each predecessor, get it's last register version
-                    var sources = new List<Register>();
-                    foreach (var pred in dfBlock.Predecessors)
-                    {
-                        if (_blockOutVersions.TryGetValue(pred, out var mapping)
-                            && mapping.TryGetValue(regNumber, out var versionedReg))
-                        {
-                            sources.Add(versionedReg);
-                        }
-                        else
-                        {
-                            // It's not in predecessors so it's probably a parameter
-                            var param = parameters.OfType<Register>().FirstOrDefault(p => p.Number == regNumber);
-                            sources.Add(param);
-                        }
-                    }
+                    InsertPhiSkeleton(frontierBlock, regNumber);
 
-                    // Insert phi into the frontier block
-                    InsertPhiFunction(sources, dfBlock);
-                    phiInserted.Add(dfBlock);
-
-                    // If dfBlock doesn't define this register, add it to queue
-                    var defines = dfBlock.Def.Any(operand => operand is Register r && r.Number == regNumber);
-                    if (!defines)
-                        workList.Enqueue(dfBlock);
+                    // Inserting a phi is itself a definition, so propagate to its frontier too.
+                    if (onWorkList.Add(frontierBlock))
+                        workList.Enqueue(frontierBlock);
                 }
             }
         }
@@ -87,227 +100,204 @@ public class SsaForm
 
     private static Dictionary<int, HashSet<Block>> GetDefinitionSites(ISILControlFlowGraph graph)
     {
-        // Check what registers are defined and where
         var defSites = new Dictionary<int, HashSet<Block>>();
 
         foreach (var block in graph.Blocks)
         {
-            for (var i = 0; i < block.Def.Count; i++)
+            foreach (var operand in block.Def)
             {
-                var operand = block.Def[i];
+                if (operand is not Register register)
+                    continue;
 
-                if (operand is Register register)
-                {
-                    if (!defSites.ContainsKey(register.Number))
-                        defSites[register.Number] = [];
-                    defSites[register.Number].Add(block);
-                }
+                if (!defSites.TryGetValue(register.Number, out var sites))
+                    defSites[register.Number] = sites = [];
+
+                sites.Add(block);
             }
         }
 
         return defSites;
     }
 
-    private void InsertPhiFunction(List<Register> sources, Block block)
+    /// <summary>
+    /// Inserts an unresolved phi node at the top of <paramref name="block"/> with one source slot
+    /// per predecessor (positionally aligned to <see cref="Block.Predecessors"/>). The destination
+    /// and source placeholders are versioned later during renaming.
+    /// </summary>
+    private void InsertPhiSkeleton(Block block, int regNumber)
     {
-        // Create phi dest, src1, src2, etc.
-        var destination = GetNewVersion(sources[0]);
-        var phi = new Instruction(-1, OpCode.Phi, destination);
+        var register = _repr[regNumber];
 
-        foreach (var source in sources.Distinct())
-            phi.Operands.Add(source);
+        var operands = new object[1 + block.Predecessors.Count];
+        operands[0] = register; // destination
+        for (var i = 0; i < block.Predecessors.Count; i++)
+            operands[1 + i] = register; // one source per predecessor, filled in during renaming
 
-        // Add it
-        block.Instructions.Insert(0, phi);
-        // Replace uses
-        ReplaceRegistersUntilReassignment(block, 1, destination);
+        block.Instructions.Insert(0, new Instruction(-1, OpCode.Phi, operands));
     }
 
-    private static void ReplaceRegistersUntilReassignment(Block block, int startIndex, Register register)
+    private void Rename(Block block, DominatorInfo dominance)
     {
-        for (var i = startIndex; i < block.Instructions.Count; i++)
-        {
-            var instruction = block.Instructions[i];
+        // Register numbers newly defined in this block, so we can pop their versions on the way out.
+        var definedHere = new List<int>();
 
-            // Reassignment?
-            if (instruction.Destination is Register destination)
-            {
-                if (destination.Number == register.Number)
-                    return;
-            }
-
-            // Replace it
-            for (var j = 0; j < instruction.Operands.Count; j++)
-            {
-                var operand = instruction.Operands[j];
-
-                if (operand is Register register2)
-                {
-                    if (register2.Number == register.Number)
-                        instruction.Operands[j] = register;
-                }
-
-                if (operand is MemoryOperand memory)
-                {
-                    if (memory.Base != null)
-                    {
-                        var baseRegister = (Register)memory.Base;
-
-                        if (baseRegister.Number == register.Number)
-                            memory.Base = register;
-                    }
-
-                    if (memory.Index != null)
-                    {
-                        var index = (Register)memory.Index;
-
-                        if (index.Number == register.Number)
-                            memory.Index = register;
-                    }
-
-                    instruction.Operands[j] = memory;
-                }
-            }
-        }
-    }
-
-    private Register GetNewVersion(Register old)
-    {
-        if (!_versionCount.ContainsKey(old.Number))
-        {
-            // Params are version 0
-            _versionCount.Add(old.Number, 0);
-            _versions.Add(old.Number, new Stack<Register>());
-            _versions[old.Number].Push(old.Copy(0));
-        }
-
-        _versionCount[old.Number]++;
-        var newRegister = old.Copy(_versionCount[old.Number]);
-        _versions[old.Number].Push(newRegister);
-        return newRegister;
-    }
-
-    private void ProcessBlock(Block block, Dictionary<Block, List<Block>> dominanceTree)
-    {
         foreach (var instruction in block.Instructions)
         {
-            // Replace registers with SSA versions
-            for (var i = 0; i < instruction.Operands.Count; i++)
+            // A phi's operands belong to the incoming edges, so they are filled by predecessors;
+            // only its destination is renamed here.
+            if (instruction.OpCode != OpCode.Phi)
+                RewriteUses(instruction);
+
+            if (instruction.Destination is Register definition)
+                instruction.Destination = NewName(definition, definedHere);
+        }
+
+        // Resolve the phi operands of successors that correspond to this block's outgoing edge.
+        foreach (var successor in block.Successors)
+        {
+            var predIndex = successor.Predecessors.IndexOf(block);
+            if (predIndex < 0)
+                continue;
+
+            foreach (var phi in successor.Instructions)
             {
-                if (instruction.Operands[i] is Register register)
-                {
-                    if (_versions.TryGetValue(register.Number, out var versions))
-                        instruction.Operands[i] = register.Copy(versions.Peek().Version);
-                }
+                if (phi.OpCode != OpCode.Phi)
+                    continue;
 
-                if (instruction.Operands[i] is MemoryOperand memory)
-                {
-                    if (memory.Base != null)
-                    {
-                        var baseRegister = (Register)memory.Base;
-
-                        if (_versions.TryGetValue(baseRegister.Number, out var versions))
-                            memory.Base = baseRegister.Copy(versions.Peek().Version);
-                    }
-
-                    if (memory.Index != null)
-                    {
-                        var indexRegister = (Register)memory.Index;
-
-                        if (_versions.TryGetValue(indexRegister.Number, out var versions))
-                            memory.Index = indexRegister.Copy(versions.Peek().Version);
-                    }
-
-                    instruction.Operands[i] = memory;
-                }
+                var regNumber = ((Register)phi.Operands[0]).Number;
+                phi.Operands[1 + predIndex] = CurrentVersion(regNumber);
             }
-
-            // Create new version
-            if (instruction.Destination is Register destination)
-                instruction.Destination = GetNewVersion(destination);
         }
 
-        // Record last register version
-        var outMapping = new Dictionary<int, Register>();
-        foreach (var kvp in _versions)
-        {
-            if (kvp.Value.Count > 0)
-                outMapping[kvp.Key] = kvp.Value.Peek();
-        }
-
-        _blockOutVersions[block] = outMapping;
-
-        // Process children in the tree
-        if (dominanceTree.TryGetValue(block, out var children))
-        {
+        // Recurse over the dominator tree.
+        if (dominance.DominanceTree.TryGetValue(block, out var children))
             foreach (var child in children)
-                ProcessBlock(child, dominanceTree);
-        }
+                Rename(child, dominance);
 
-        // Remove registers from versions but not from count
-        foreach (var instruction in block.Instructions.Where(i => i.Destination is Register))
+        // Leaving the block: pop the versions it defined.
+        foreach (var regNumber in definedHere)
+            _stacks[regNumber].Pop();
+    }
+
+    private void RewriteUses(Instruction instruction)
+    {
+        for (var i = 0; i < instruction.Operands.Count; i++)
         {
-            var register = (Register)instruction.Destination!;
-            _versions.FirstOrDefault(kv => kv.Key == register.Number).Value.Pop();
+            var operand = instruction.Operands[i];
+
+            if (operand is Register register)
+            {
+                instruction.Operands[i] = CurrentVersion(register.Number);
+            }
+            else if (operand is MemoryOperand memory)
+            {
+                if (memory.Base is Register baseRegister)
+                    memory.Base = CurrentVersion(baseRegister.Number);
+                if (memory.Index is Register indexRegister)
+                    memory.Index = CurrentVersion(indexRegister.Number);
+
+                instruction.Operands[i] = memory; // MemoryOperand is a struct, write the copy back
+            }
         }
     }
 
+    /// <summary>
+    /// The version of <paramref name="regNumber"/> currently in scope, or the entry value
+    /// (version -1) if it has not been defined on the current path.
+    /// </summary>
+    private Register CurrentVersion(int regNumber)
+    {
+        if (_stacks.TryGetValue(regNumber, out var stack) && stack.Count > 0)
+            return stack.Peek();
+
+        return _repr.TryGetValue(regNumber, out var register) ? register : new Register(regNumber, null);
+    }
+
+    private Register NewName(Register register, List<int> definedHere)
+    {
+        var regNumber = register.Number;
+
+        var version = _counter.TryGetValue(regNumber, out var current) ? current + 1 : 1;
+        _counter[regNumber] = version;
+
+        var versioned = register.Copy(version);
+
+        if (!_stacks.TryGetValue(regNumber, out var stack))
+            _stacks[regNumber] = stack = new Stack<Register>();
+
+        stack.Push(versioned);
+        definedHere.Add(regNumber);
+
+        return versioned;
+    }
+
+    /// <summary>
+    /// Destroys SSA form by replacing each phi with copies on the incoming edges. For a phi
+    /// <c>dest = phi(s0, s1, ...)</c> a <c>Move dest, s[i]</c> is appended (before the terminator)
+    /// to the i-th predecessor. Phi operands are positionally aligned to the predecessor list, so
+    /// the i-th source belongs to the i-th predecessor.
+    /// </summary>
     public static void Remove(MethodAnalysisContext method)
     {
         var cfg = method.ControlFlowGraph!;
 
         foreach (var block in cfg.Blocks)
         {
-            // Get all phis
             var phiInstructions = block.Instructions
                 .Where(i => i.OpCode == OpCode.Phi)
                 .ToList();
 
-            if (phiInstructions.Count == 0) continue;
+            if (phiInstructions.Count == 0)
+                continue;
 
-            foreach (var predecessor in block.Predecessors)
+            for (var predIndex = 0; predIndex < block.Predecessors.Count; predIndex++)
             {
-                if (predecessor.Instructions.Count == 0)
-                    continue;
-
-                predecessor.Instructions.RemoveAt(0);
+                var predecessor = block.Predecessors[predIndex];
                 var moves = new List<Instruction>();
 
                 foreach (var phi in phiInstructions)
                 {
-                    var result = (LocalVariable)phi.Operands[0]!;
-                    var sources = phi.Operands.Skip(1).Cast<LocalVariable>().ToList();
-
-                    var predIndex = block.Predecessors.IndexOf(predecessor);
-
-                    if (predIndex < 0 || predIndex >= sources.Count)
+                    if (1 + predIndex >= phi.Operands.Count)
                         continue;
 
-                    var source = sources[predIndex];
+                    var destination = phi.Operands[0];
+                    var source = phi.Operands[1 + predIndex];
 
-                    // Add move for it
-                    moves.Add(new Instruction(-1, OpCode.Move, result, source));
+                    // Skip redundant self-copies.
+                    if (Equals(destination, source))
+                        continue;
+
+                    moves.Add(new Instruction(-1, OpCode.Move, destination, source));
                 }
 
-                // Add all of those moves
-                if (predecessor.Instructions.Count == 0)
-                    predecessor.Instructions = moves;
-                else
-                    predecessor.Instructions.InsertRange(predecessor.Instructions.Count - (predecessor.Instructions.Count == 1 ? 1 : 2), moves);
+                InsertBeforeTerminator(predecessor, moves);
             }
 
-            // Remove all phis
-            foreach (var instruction in block.Instructions)
+            foreach (var phi in phiInstructions)
             {
-                if (instruction.OpCode == OpCode.Phi)
-                {
-                    instruction.OpCode = OpCode.Nop;
-                    instruction.Operands = [];
-                }
+                phi.OpCode = OpCode.Nop;
+                phi.Operands = [];
             }
         }
 
         cfg.RemoveNops();
         cfg.RemoveEmptyBlocks();
+    }
+
+    /// <summary>
+    /// Inserts <paramref name="moves"/> at the end of <paramref name="block"/>, but before any
+    /// trailing control-flow instruction, so the copies execute on the outgoing edge.
+    /// </summary>
+    private static void InsertBeforeTerminator(Block block, List<Instruction> moves)
+    {
+        if (moves.Count == 0)
+            return;
+
+        var insertAt = block.Instructions.Count;
+
+        if (insertAt > 0 && !block.Instructions[insertAt - 1].IsFallThrough)
+            insertAt--;
+
+        block.Instructions.InsertRange(insertAt, moves);
     }
 }
