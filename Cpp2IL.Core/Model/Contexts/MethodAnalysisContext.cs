@@ -356,6 +356,11 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
         // Create locals
         SsaForm.Build(this);
         LocalVariables.CreateAll(this);
+
+        // Eliminate dead computations (e.g. the unused flags emitted for every comparison) while
+        // still in SSA form, where a zero use count proves a definition dead.
+        DeadCodeEliminator.Run(this);
+
         SsaForm.Remove(this);
 
         MetadataResolver.ResolveAll(this);
