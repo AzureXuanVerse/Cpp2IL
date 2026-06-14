@@ -207,6 +207,7 @@ public static class LocalVariables
         PropagateFromReturn(method);
         PropagateFromParameters(method);
         SeedRuntimeClassTypes(method);
+        SeedComparisonResults(method);
 
         // Everything else is mutually enabling and so runs to a fixpoint: a typed receiver lets an
         // ambiguous call resolve, a resolved call types its return value and arguments, a typed base
@@ -242,6 +243,22 @@ public static class LocalVariables
 
             if (instruction.Operands[0] is LocalVariable destination && instruction.Operands[1] is TypeAnalysisContext type)
                 destination.Type = new RuntimeClassTypeAnalysisContext(type, type.DeclaringAssembly);
+        }
+    }
+
+    // A comparison (CheckEqual, CheckLess, ...) writes a 0/1 result into its destination, so that local
+    // is a System.Boolean regardless of what the compared operands are.
+    private static void SeedComparisonResults(MethodAnalysisContext method)
+    {
+        var booleanType = method.AppContext.SystemTypes.SystemBooleanType;
+
+        foreach (var instruction in method.ControlFlowGraph!.Instructions)
+        {
+            if (instruction.OpCode is < OpCode.CheckEqual or > OpCode.CheckLessOrEqual)
+                continue;
+
+            if (instruction.Destination is LocalVariable destination)
+                destination.Type = booleanType;
         }
     }
 
