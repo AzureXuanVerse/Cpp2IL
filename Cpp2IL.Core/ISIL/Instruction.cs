@@ -127,6 +127,7 @@ public class Instruction(int index, OpCode opcode, params object[] operands)
         {
             string text => $"\"{text}\"",
             MethodAnalysisContext method => $"{method.DeclaringType!.Name}.{method.Name}",
+            RuntimeMethodInfoAnalysisContext methodInfo => $"methodof({methodInfo.RepresentedMethod.FullName})",
             TypeAnalysisContext type => $"typeof({type.FullName})",
             Instruction instruction => $"@{instruction.Index}",
             Block block => $"@b{block.ID}",

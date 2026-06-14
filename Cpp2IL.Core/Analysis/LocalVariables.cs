@@ -207,6 +207,7 @@ public static class LocalVariables
         PropagateFromReturn(method);
         PropagateFromParameters(method);
         SeedRuntimeClassTypes(method);
+        SeedMethodInfoTypes(method);
         SeedComparisonResults(method);
 
         // Everything else is mutually enabling and so runs to a fixpoint: a typed receiver lets an
@@ -241,8 +242,25 @@ public static class LocalVariables
             if (instruction.OpCode != OpCode.Move || instruction.Operands.Count < 2)
                 continue;
 
-            if (instruction.Operands[0] is LocalVariable destination && instruction.Operands[1] is TypeAnalysisContext type)
+            if (instruction.Operands[0] is LocalVariable destination
+                && instruction.Operands[1] is TypeAnalysisContext type and not RuntimeMethodInfoAnalysisContext)
                 destination.Type = new RuntimeClassTypeAnalysisContext(type, type.DeclaringAssembly);
+        }
+    }
+
+    // A method-metadata global load (Move local, methodof(M)) puts a MethodInfo* for M into the local.
+    // MetadataResolver already resolved the address to a RuntimeMethodInfoAnalysisContext naming the
+    // method; that same context is the local's type (a runtime handle, recoverable via its
+    // RepresentedMethod).
+    private static void SeedMethodInfoTypes(MethodAnalysisContext method)
+    {
+        foreach (var instruction in method.ControlFlowGraph!.Instructions)
+        {
+            if (instruction.OpCode != OpCode.Move || instruction.Operands.Count < 2)
+                continue;
+
+            if (instruction.Operands[0] is LocalVariable destination && instruction.Operands[1] is RuntimeMethodInfoAnalysisContext methodInfo)
+                destination.Type = methodInfo;
         }
     }
 

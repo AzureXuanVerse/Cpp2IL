@@ -15,39 +15,57 @@ public static class MetadataResolver
     {
         ResolveCalls(method);
         ResolveGetter(method);
-        ResolveStrings(method);
+        ResolveMetadataUsages(method);
     }
 
-    private static void ResolveStrings(MethodAnalysisContext method)
+    /// <summary>
+    /// Resolves <c>Move local, [absoluteAddress]</c> loads of IL2CPP metadata-usage globals into a
+    /// strongly-typed operand: a string literal, a <see cref="TypeAnalysisContext"/> (an Il2CppType*/
+    /// Il2CppClass* usage) or, for a MethodInfo* usage, a <see cref="RuntimeMethodInfoAnalysisContext"/>
+    /// naming the method it refers to (also used to type the local - see <see cref="LocalVariables"/>).
+    /// </summary>
+    private static void ResolveMetadataUsages(MethodAnalysisContext method)
     {
+        var libContext = method.AppContext.LibCpp2IlContext;
+
         foreach (var instruction in method.ControlFlowGraph!.Instructions)
         {
             if (instruction.OpCode != OpCode.Move)
                 continue;
 
-            if ((instruction.Operands[0] is not LocalVariable) || (instruction.Operands[1] is not MemoryOperand memory))
+            // Only an absolute-address load [addr] (no base/index/scale) can be a metadata-usage global.
+            if (instruction.Operands[0] is not LocalVariable
+                || instruction.Operands[1] is not MemoryOperand { Base: null, Index: null, Scale: 0 } memory)
                 continue;
 
-            if (memory.Base == null && memory.Index == null && memory.Scale == 0)
+            var address = (ulong)memory.Addend;
+
+            // String literal.
+            var stringLiteral = libContext.GetLiteralByAddress(address);
+            if (stringLiteral != null)
             {
-                var stringLiteral = method.AppContext.LibCpp2IlContext.GetLiteralByAddress((ulong)memory.Addend);
+                instruction.Operands[1] = stringLiteral;
+                continue;
+            }
 
-                if (stringLiteral == null)
+            // Type metadata usage (Il2CppType* / Il2CppClass*).
+            if (method.DeclaringType is { } declaringType)
+            {
+                var typeContext = libContext.GetTypeGlobalByAddress(address)?.ToContext(declaringType.DeclaringAssembly);
+                if (typeContext != null)
                 {
-                    // Try instead check if its type metadata usage
-                    var metadataUsage = method.AppContext.LibCpp2IlContext.GetTypeGlobalByAddress((ulong)memory.Addend);
-                    if (metadataUsage != null && method.DeclaringType is not null)
-                    {
-                        var typeAnalysisContext = metadataUsage.ToContext(method.DeclaringType!.DeclaringAssembly);
-                        if (typeAnalysisContext != null)
-                            instruction.Operands[1] = typeAnalysisContext;
-                    }
-
+                    instruction.Operands[1] = typeContext;
                     continue;
                 }
-
-                instruction.Operands[1] = stringLiteral;
             }
+
+            // Method metadata usage (MethodInfo*). On metadata v27+ GetMethodGlobalByAddress can return
+            // any global, so confirm it is actually a method before resolving - the resolver's switch
+            // throws on other usage kinds.
+            var methodUsage = libContext.GetMethodGlobalByAddress(address);
+            if (methodUsage?.Type is MetadataUsageType.MethodDef or MetadataUsageType.MethodRef
+                && method.AppContext.ResolveContextForMethod(methodUsage) is { DeclaringType: { } methodDeclaringType } methodContext)
+                instruction.Operands[1] = new RuntimeMethodInfoAnalysisContext(methodContext, methodDeclaringType.DeclaringAssembly);
         }
     }
 

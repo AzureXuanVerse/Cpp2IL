@@ -416,6 +416,11 @@ public static class IlGenerator
                 instructions.Add(CilOpCodes.Ldstr, "Unmanaged memory load: " + operand.ToString());
                 instructions.Add(CilOpCodes.Newobj, importer.ImportMethod(stringCtor));
                 break;
+            case RuntimeMethodInfoAnalysisContext:
+                //Not fully implemented, these basically shouldn't actually ever exist in the final IL.
+                instructions.Add(CilOpCodes.Ldc_I4_0);
+                instructions.Add(CilOpCodes.Conv_I);
+                break;
             case TypeAnalysisContext type:
                 if (type.Name == "T")
                 {

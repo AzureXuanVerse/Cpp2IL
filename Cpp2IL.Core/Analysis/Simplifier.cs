@@ -188,25 +188,17 @@ public static class Simplifier
                     if (operand is LocalVariable usedLocal && usedLocal == local)
                         instruction.Operands[j] = replacement;
 
-                    // [base]
-                    if (operand is MemoryOperand { Index: null, Addend: 0, Scale: 0 } memoryLocal)
+                    // A memory operand's base/index holds an address, so only a local replacement may
+                    // be substituted there (copy propagation). A constant/value replacement is left in
+                    // place - the caller sees the local is still used and keeps its defining move.
+                    if (operand is MemoryOperand memory && replacement is LocalVariable)
                     {
-                        if (memoryLocal.Base is LocalVariable baseLocal && baseLocal == local)
-                            instruction.Operands[j] = replacement;
-                    }
-
-                    if (operand is MemoryOperand memory)
-                    {
-                        // [addend]
-                        if (memory.IsConstant && (replacement is MemoryOperand { IsConstant: true } replacementMemory))
-                            memory.Addend = replacementMemory.Addend;
-
                         if (memory.Base is LocalVariable baseLocal && baseLocal == local)
                             memory.Base = replacement;
 
                         if (memory.Index is LocalVariable indexLocal && indexLocal == local)
                             memory.Index = replacement;
-                        
+
                         instruction.Operands[j] = memory;
                     }
                 }

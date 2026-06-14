@@ -63,4 +63,69 @@ public class SimplifierTests
         Assert.That(ReferenceEquals(writeLineCall.Operands[1], selected), Is.True,
             "join-point call must keep the selected local, not a branch-specific constant");
     }
+
+    [Test]
+    public void DoesNotCorruptUnrelatedConstantMemoryAddends()
+    {
+        var aLocal = new LocalVariable("a", new Register(null, "a"));
+        var bLocal = new LocalVariable("b", new Register(null, "b"));
+
+        // a := [0xAAAA]; f(a); b := [0xBBBB]; g(b).  Inlining a's constant load must not touch the
+        // unrelated constant address [0xBBBB] - they are distinct absolute addresses.
+        var instructions = new List<Instruction>
+        {
+            new(0, OpCode.Move, aLocal, new MemoryOperand(null, null, 0xAAAA, 0)),
+            new(1, OpCode.CallVoid, "f", aLocal, 0),
+            new(2, OpCode.Move, bLocal, new MemoryOperand(null, null, 0xBBBB, 0)),
+            new(3, OpCode.CallVoid, "g", bLocal, 0),
+            new(4, OpCode.Return),
+        };
+
+        var graph = new ISILControlFlowGraph(instructions);
+        var method = CreateMethod(graph, aLocal, bLocal);
+
+        Simplifier.Simplify(method);
+
+        var live = graph.Blocks.SelectMany(b => b.Instructions).ToList();
+
+        var gCall = live.Single(i => i.OpCode == OpCode.CallVoid && i.Operands[0] is "g");
+        Assert.That(gCall.Operands[1], Is.InstanceOf<MemoryOperand>());
+        Assert.That(((MemoryOperand)gCall.Operands[1]).Addend, Is.EqualTo(0xBBBBL),
+            "an unrelated constant address must not be rewritten by another inline");
+
+        // The intended inline still happens.
+        var fCall = live.Single(i => i.OpCode == OpCode.CallVoid && i.Operands[0] is "f");
+        Assert.That(fCall.Operands[1], Is.InstanceOf<MemoryOperand>());
+        Assert.That(((MemoryOperand)fCall.Operands[1]).Addend, Is.EqualTo(0xAAAAL));
+    }
+
+    [Test]
+    public void PropagatesCopyThroughMemoryBase()
+    {
+        var x = new LocalVariable("x", new Register(null, "x"));
+        var y = new LocalVariable("y", new Register(null, "y"));
+        var z = new LocalVariable("z", new Register(null, "z"));
+
+        // x := y; z := [x]; f(z).  Copy propagation must rewrite the load's base x -> y (a base must
+        // stay a local), so the surviving load reads [y].
+        var instructions = new List<Instruction>
+        {
+            new(0, OpCode.Move, x, y),
+            new(1, OpCode.Move, z, new MemoryOperand(x, null, 0, 0)),
+            new(2, OpCode.CallVoid, "f", z, 0),
+            new(3, OpCode.Return),
+        };
+
+        var graph = new ISILControlFlowGraph(instructions);
+        var method = CreateMethod(graph, x, y, z);
+
+        Simplifier.Simplify(method);
+
+        var live = graph.Blocks.SelectMany(b => b.Instructions).ToList();
+        var load = live.Single(i => i.Operands.Any(o => o is MemoryOperand));
+        var memory = (MemoryOperand)load.Operands.First(o => o is MemoryOperand);
+        Assert.That(ReferenceEquals(memory.Base, y), Is.True, "the copy's source must be propagated into the memory base");
+        Assert.That(live.Any(i => i.OpCode == OpCode.Move && ReferenceEquals(i.Operands[0], x)), Is.False,
+            "the now-dead copy is removed");
+    }
 }
