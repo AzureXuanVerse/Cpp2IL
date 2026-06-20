@@ -5,6 +5,7 @@ using Cpp2IL.Core.Il2CppApiFunctions;
 using Cpp2IL.Core.ISIL;
 using Cpp2IL.Core.Model.Contexts;
 using Cpp2IL.Core.Utils;
+using LibCpp2IL;
 
 namespace Cpp2IL.Core.Analysis;
 
