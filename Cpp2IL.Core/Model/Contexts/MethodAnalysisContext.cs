@@ -352,6 +352,9 @@ public class MethodAnalysisContext : HasGenericParameters, IMethodInfoProvider
         // single-assignment and a type, once known, is stable for that value.
         MetadataResolver.ResolveAll(this);
 
+        // Resolve KeyFunctionAddress calls.
+        KeyFunctionRecovery.Run(this);
+
         // Delete any il2cpp_codegen_initialize_runtime_metadata/il2cpp_codegen_initialize_method
         MetadataInitGuardRemover.Run(this);
 

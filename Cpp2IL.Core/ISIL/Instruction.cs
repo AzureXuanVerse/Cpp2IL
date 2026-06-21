@@ -58,6 +58,7 @@ public class Instruction(int index, OpCode opcode, params object[] operands)
             case OpCode.CheckNotEqual:
             case OpCode.CheckGreaterOrEqual:
             case OpCode.CheckLessOrEqual:
+            case OpCode.Newobj:
                 if (newDestination != null)
                     Operands[0] = newDestination;
                 return IsConstantValue(Operands[0]) ? null : Operands[0];
@@ -83,6 +84,7 @@ public class Instruction(int index, OpCode opcode, params object[] operands)
         {
             OpCode.Move or OpCode.ConditionalJump
                 or OpCode.ShiftStack or OpCode.Not or OpCode.Negate
+                or OpCode.Newobj
                 => [Operands[1]],
 
             OpCode.Add or OpCode.Subtract or OpCode.Multiply

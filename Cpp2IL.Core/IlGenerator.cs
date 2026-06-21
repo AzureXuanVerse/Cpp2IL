@@ -270,6 +270,27 @@ public static class IlGenerator
                 StoreToOperand(instruction.Operands[0], method, locals, writeLine);
                 break;
 
+            case OpCode.Newobj:
+                // Try and fuse our Newobj + the follow up constructor CallVoid into one IL newobj. 
+                // If we can't, just fall back to an Ldnull.
+                if (FindConstructorCall(context, instruction) is { Operands: [MethodAnalysisContext constructor, _, ..] } constructorCall)
+                {
+                    foreach (var argument in constructorCall.Operands.Skip(2))
+                        LoadOperand(argument, method, locals, writeLine, stringCtor);
+
+                    instructions.Add(CilOpCodes.Newobj, importer.ImportMethod(constructor.ToMethodDescriptor(module)));
+                    StoreToOperand(instruction.Operands[0], method, locals, writeLine);
+
+                    constructorCall.OpCode = OpCode.Nop;
+                    constructorCall.Operands = [];
+                }
+                else
+                {
+                    instructions.Add(CilOpCodes.Ldnull);
+                    StoreToOperand(instruction.Operands[0], method, locals, writeLine);
+                }
+                break;
+
             case OpCode.Phi:
                 instructions.Add(CilOpCodes.Ldstr, $"Phi opcodes should not exist at this point in decompilation ({instruction})");
                 instructions.Add(CilOpCodes.Call, importer.ImportMethod(writeLine));
@@ -428,6 +449,31 @@ public static class IlGenerator
         }
 
         return instructions.ToList().GetRange(startIndex, instructions.Count - startIndex); // Return added IL
+    }
+
+    // Try find the follow up CallVoid for a constructor, after a Newobj.
+    private static Instruction? FindConstructorCall(MethodAnalysisContext context, Instruction newobj)
+    {
+        var newObject = newobj.Operands[0];
+
+        foreach (var block in context.ControlFlowGraph!.Blocks)
+        {
+            var index = block.Instructions.IndexOf(newobj);
+            if (index < 0)
+                continue;
+
+            for (var i = index + 1; i < block.Instructions.Count; i++)
+            {
+                var candidate = block.Instructions[i];
+                if (candidate is { OpCode: OpCode.CallVoid, Operands: [MethodAnalysisContext { Name: ".ctor" }, _, ..] }
+                    && ReferenceEquals(candidate.Operands[1], newObject))
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        return null;
     }
 
     private static void LoadOperand(object operand, MethodDefinition method,

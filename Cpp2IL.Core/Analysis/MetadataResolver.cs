@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Cpp2IL.Core.Extensions;
 using Cpp2IL.Core.Graphs;
@@ -210,6 +211,62 @@ public static class MetadataResolver
     {
         var index = call.OpCode == OpCode.CallVoid ? 1 : 2;
         return index < call.Operands.Count ? call.Operands[index] as LocalVariable : null;
+    }
+
+    /// <summary>
+    /// Resolves any Call (theoretically should always be a CallVoid) target directly after a Newobj to a constructor call.
+    /// </summary>
+    public static bool ResolveConstructorCalls(MethodAnalysisContext method)
+    {
+        var definitions = new Dictionary<LocalVariable, Instruction>();
+        foreach (var instruction in method.ControlFlowGraph!.Instructions)
+            if (instruction.Destination is LocalVariable definition)
+                definitions[definition] = instruction;
+
+        var changed = false;
+
+        foreach (var instruction in method.ControlFlowGraph.Instructions)
+        {
+            if (!instruction.IsCall || !instruction.Operands[0].IsNumeric())
+                continue;
+
+            if (!method.AppContext.MethodsByAddress.TryGetValue((ulong)instruction.Operands[0], out var candidates))
+                continue;
+
+            if (GetReceiver(instruction) is not { } receiver || AllocatedType(receiver, definitions) is not { } allocatedType)
+                continue;
+
+            var constructor = candidates.FirstOrDefault(c => !c.IsStatic && c.Name == ".ctor" && ReferenceEquals(c.DeclaringType, allocatedType));
+            if (constructor == null)
+                continue;
+
+            instruction.Operands[0] = constructor;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    // Follow SSA copies from a local back to the Newobj that produced the value
+    private static TypeAnalysisContext? AllocatedType(LocalVariable local, Dictionary<LocalVariable, Instruction> definitions)
+    {
+        var visited = new HashSet<LocalVariable>();
+
+        while (visited.Add(local) && definitions.TryGetValue(local, out var definition))
+        {
+            switch (definition.OpCode)
+            {
+                case OpCode.Newobj:
+                    return (definition.Operands[0] as LocalVariable)?.Type;
+                case OpCode.Move when definition.Operands[1] is LocalVariable source:
+                    local = source;
+                    continue;
+            }
+
+            break;
+        }
+
+        return null;
     }
 
     /// <summary>

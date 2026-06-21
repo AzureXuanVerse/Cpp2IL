@@ -207,8 +207,12 @@ public static class LocalVariables
         PropagateFromReturn(method);
         PropagateFromParameters(method);
         SeedRuntimeClassTypes(method);
+        SeedNewobjResults(method);
         SeedMethodInfoTypes(method);
         SeedComparisonResults(method);
+
+        // Everywhere there's a CallVoid after a Newobj, we can resolve the constructor call.
+        MetadataResolver.ResolveConstructorCalls(method);
 
         // Everything else is mutually enabling and so runs to a fixpoint: a typed receiver lets an
         // ambiguous call resolve, a resolved call types its return value and arguments, a typed base
@@ -248,6 +252,27 @@ public static class LocalVariables
                 destination.Type = new RuntimeClassTypeAnalysisContext(type, type.DeclaringAssembly);
         }
     }
+    
+    private static void SeedNewobjResults(MethodAnalysisContext method)
+    {
+        foreach (var instruction in method.ControlFlowGraph!.Instructions)
+        {
+            if (instruction.OpCode != OpCode.Newobj || instruction.Operands.Count < 2)
+                continue;
+
+            if (instruction.Operands[0] is LocalVariable destination && InstantiatedType(instruction.Operands[1]) is { } type)
+                destination.Type = type;
+        }
+    }
+
+    private static TypeAnalysisContext? InstantiatedType(object classOperand) =>
+        classOperand switch
+        {
+            LocalVariable { Type: RuntimeClassTypeAnalysisContext { RepresentedType: var t } } => t,
+            RuntimeClassTypeAnalysisContext { RepresentedType: var t } => t,
+            TypeAnalysisContext type => type, //not sure this is actually valid but for completeness
+            _ => null,
+        };
 
     // A method-metadata global load (Move local, methodof(M)) puts a MethodInfo* for M into the local.
     // MetadataResolver already resolved the address to a RuntimeMethodInfoAnalysisContext naming the

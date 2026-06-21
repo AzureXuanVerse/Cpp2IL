@@ -1,4 +1,6 @@
-﻿namespace Cpp2IL.Core.ISIL;
+﻿using Cpp2IL.Core.Analysis;
+
+namespace Cpp2IL.Core.ISIL;
 
 /// <summary>
 /// If changing this, also update <see cref="Instruction"/>
@@ -100,5 +102,10 @@ public enum OpCode
     CheckGreaterOrEqual,
 
     /// <summary>Moves 1 into op 1, if op 2 is less than or equal to op 3</summary>
-    CheckLessOrEqual
+    CheckLessOrEqual,
+
+    /// <summary>
+    /// Allocates a new, uninitialized instance of the type described by op 2 and moves it into op 1.
+    /// </summary>
+    Newobj
 }
